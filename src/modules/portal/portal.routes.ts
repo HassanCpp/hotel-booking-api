@@ -3,11 +3,15 @@ import { PortalController } from './portal.controller';
 import { requireAuth } from '../../middleware/auth';
 import { requireRole } from '../../middleware/roleGuard';
 import { tenantGuard } from '../../middleware/tenantGuard';
+import { upload } from '../../utils/upload';
 
 const router = Router();
 
 // Require authenticated hotel admin or super admin for all portal operations
 router.use(requireAuth, requireRole('HOTEL_ADMIN', 'SUPER_ADMIN'));
+
+// 0. Asset Uploads
+router.post('/upload', upload.single('file'), PortalController.uploadImage);
 
 // 1. Amenities Catalog
 router.get('/amenities', PortalController.getAmenitiesCatalog);
@@ -15,6 +19,11 @@ router.get('/amenities', PortalController.getAmenitiesCatalog);
 // 2. Hotel Tenant Information
 router.get('/hotel/me', PortalController.getMyHotel);
 router.get('/hotels/:hotelId', tenantGuard, PortalController.getHotelById);
+
+// Hotel Profile & Account Management
+router.patch('/hotel/me', PortalController.updateMyHotel);
+router.post('/account/password', PortalController.changePassword);
+router.post('/account/email', PortalController.changeEmail);
 
 // 3. Property Management (Milestone A3)
 router.get('/properties', PortalController.getMyProperties);

@@ -14,5 +14,9 @@ router.post('/hotels', AdminController.onboardHotel);
 router.get('/hotels/:id', AdminController.getHotelById);
 router.patch('/hotels/:id', AdminController.updateHotel);
 router.patch('/hotels/:id/status', AdminController.updateHotelStatus);
+router.patch('/hotels/:id/admin-password', AdminController.resetHotelAdminPassword);
+router.patch('/hotels/:id/admin-email', AdminController.updateHotelAdminEmail);
+router.patch('/hotels/:id/admin-profile', AdminController.updateHotelAdminProfile);
+router.get('/hotels/:id/activity', AdminController.getHotelActivity);
 
 export const adminRoutes = router;

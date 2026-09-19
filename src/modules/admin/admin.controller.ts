@@ -8,6 +8,17 @@ import { HotelMembership } from '../../models/HotelMembership';
 import { Property } from '../../models/Property';
 import { AppError } from '../../middleware/errorHandler';
 import { generateUniqueHotelSlug } from '../../utils/slugify';
+import { logActivity } from '../../utils/logActivity';
+import { ActivityLog } from '../../models/ActivityLog';
+import { RoomType } from '../../models/RoomType';
+
+const resetPasswordSchema = z.object({
+  newPassword: z.string().min(6, 'Password must be at least 6 characters'),
+});
+
+const updateAdminEmailSchema = z.object({
+  newEmail: z.string().email('Invalid email address'),
+});
 
 const onboardHotelSchema = z.object({
   name: z.string().min(2, 'Hotel name must be at least 2 characters'),
@@ -34,13 +45,34 @@ const updateStatusSchema = z.object({
   status: z.enum(['ONBOARDING', 'ACTIVE', 'SUSPENDED', 'ARCHIVED']),
 });
 
+const updateAdminProfileSchema = z.object({
+  fullName: z.string().min(2, 'Full name must be at least 2 characters').optional(),
+  status: z.enum(['ACTIVE', 'SUSPENDED']).optional(),
+});
+
 export class AdminController {
   static async getStats(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const [totalHotels, totalUsers, totalProperties] = await Promise.all([
+      const [
+        totalHotels,
+        totalUsers,
+        totalProperties,
+        activeHotels,
+        suspendedHotels,
+        onboardingHotels,
+        publishedProperties,
+        totalRoomTypes,
+        recentActivity
+      ] = await Promise.all([
         HotelAccount.countDocuments(),
         User.countDocuments(),
         Property.countDocuments(),
+        HotelAccount.countDocuments({ status: 'ACTIVE' }),
+        HotelAccount.countDocuments({ status: 'SUSPENDED' }),
+        HotelAccount.countDocuments({ status: 'ONBOARDING' }),
+        Property.countDocuments({ status: 'PUBLISHED' }),
+        RoomType.countDocuments({ isActive: true }),
+        ActivityLog.find().sort({ createdAt: -1 }).limit(15).populate('actorId', 'fullName email').lean()
       ]);
 
       res.status(200).json({
@@ -49,6 +81,12 @@ export class AdminController {
           totalHotels,
           totalUsers,
           totalProperties,
+          activeHotels,
+          suspendedHotels,
+          onboardingHotels,
+          publishedProperties,
+          totalRoomTypes,
+          recentActivity,
           platformStatus: 'OPERATIONAL',
         },
       });
@@ -119,6 +157,15 @@ export class AdminController {
         role: 'HOTEL_ADMIN',
       });
 
+      await logActivity({
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'HOTEL_CREATED',
+        targetType: 'HotelAccount',
+        targetId: newHotel._id,
+        metadata: { hotelName: newHotel.name, adminEmail: newAdmin.email }
+      });
+
       res.status(201).json({
         success: true,
         message: 'Hotel onboarded and activated successfully',
@@ -156,13 +203,21 @@ export class AdminController {
         throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
       }
 
-      const propertyCount = await Property.countDocuments({ hotelAccountId: hotel._id });
+      const [propertyCount, publishedPropertyCount, totalRoomTypes, recentActivity] = await Promise.all([
+        Property.countDocuments({ hotelAccountId: hotel._id }),
+        Property.countDocuments({ hotelAccountId: hotel._id, status: 'PUBLISHED' }),
+        RoomType.countDocuments({ hotelAccountId: hotel._id, isActive: true }),
+        ActivityLog.find({ tenantId: hotel._id }).sort({ createdAt: -1 }).limit(10).populate('actorId', 'fullName email').lean()
+      ]);
 
       res.status(200).json({
         success: true,
         data: {
           hotel,
           propertyCount,
+          publishedPropertyCount,
+          totalRoomTypes,
+          recentActivity,
         },
       });
     } catch (error) {
@@ -185,6 +240,15 @@ export class AdminController {
         throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
       }
 
+      await logActivity({
+        tenantId: hotel._id,
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'HOTEL_UPDATED',
+        targetType: 'HotelAccount',
+        targetId: hotel._id,
+      });
+
       res.status(200).json({
         success: true,
         message: 'Hotel details updated successfully',
@@ -202,6 +266,12 @@ export class AdminController {
       const { id } = req.params;
       const { status } = updateStatusSchema.parse(req.body);
 
+      const hotelBefore = await HotelAccount.findById(id);
+      if (!hotelBefore) {
+        throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
+      }
+      const previousStatus = hotelBefore.status;
+
       const hotel = await HotelAccount.findByIdAndUpdate(
         id,
         { $set: { status } },
@@ -212,12 +282,169 @@ export class AdminController {
         throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
       }
 
+      await logActivity({
+        tenantId: hotel._id,
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'STATUS_CHANGED',
+        targetType: 'HotelAccount',
+        targetId: hotel._id,
+        metadata: { previousStatus, newStatus: status }
+      });
+
       res.status(200).json({
         success: true,
         message: `Hotel status updated to ${status}`,
         data: {
           hotel,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+  static async resetHotelAdminPassword(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { newPassword } = resetPasswordSchema.parse(req.body);
+
+      const hotel = await HotelAccount.findById(id);
+      if (!hotel) {
+        throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
+      }
+
+      const user = await User.findById(hotel.primaryAdminUserId);
+      if (!user) {
+        throw new AppError('Admin user not found', 404, 'USER_NOT_FOUND');
+      }
+
+      const salt = await bcrypt.genSalt(12);
+      user.passwordHash = await bcrypt.hash(newPassword, salt);
+      await user.save();
+
+      await logActivity({
+        tenantId: hotel._id,
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'PASSWORD_RESET',
+        targetType: 'User',
+        targetId: user._id,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Admin password reset successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateHotelAdminEmail(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { newEmail } = updateAdminEmailSchema.parse(req.body);
+      const email = newEmail.toLowerCase().trim();
+
+      const hotel = await HotelAccount.findById(id);
+      if (!hotel) {
+        throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
+      }
+
+      const existingUser = await User.findOne({ email });
+      if (existingUser && existingUser._id.toString() !== hotel.primaryAdminUserId.toString()) {
+        throw new AppError('An administrator with this email address already exists', 400, 'USER_ALREADY_EXISTS');
+      }
+
+      const user = await User.findById(hotel.primaryAdminUserId);
+      if (!user) {
+        throw new AppError('Admin user not found', 404, 'USER_NOT_FOUND');
+      }
+
+      const oldEmail = user.email;
+      user.email = email;
+      await user.save();
+
+      await logActivity({
+        tenantId: hotel._id,
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'ADMIN_EMAIL_CHANGED',
+        targetType: 'User',
+        targetId: user._id,
+        metadata: { oldEmail, newEmail: email }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Admin email updated successfully',
+        data: { email }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateHotelAdminProfile(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const data = updateAdminProfileSchema.parse(req.body);
+
+      const hotel = await HotelAccount.findById(id);
+      if (!hotel) {
+        throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
+      }
+
+      const user = await User.findById(hotel.primaryAdminUserId);
+      if (!user) {
+        throw new AppError('Admin user not found', 404, 'USER_NOT_FOUND');
+      }
+
+      if (data.fullName) user.fullName = data.fullName.trim();
+      if (data.status) user.status = data.status;
+      await user.save();
+
+      await logActivity({
+        tenantId: hotel._id,
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'ADMIN_PROFILE_UPDATED',
+        targetType: 'User',
+        targetId: user._id,
+        metadata: { fullName: user.fullName, status: user.status },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Hotel admin profile updated successfully',
+        data: {
+          admin: {
+            id: user._id,
+            fullName: user.fullName,
+            email: user.email,
+            status: user.status,
+            role: user.role,
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getHotelActivity(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      const activities = await ActivityLog.find({ tenantId: id })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .populate('actorId', 'fullName email')
+        .lean();
+
+      res.status(200).json({
+        success: true,
+        data: { activities }
       });
     } catch (error) {
       next(error);

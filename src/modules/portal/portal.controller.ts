@@ -1,12 +1,15 @@
 import { Response, NextFunction } from 'express';
+import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { AuthRequest } from '../../types/auth.types';
 import { HotelAccount } from '../../models/HotelAccount';
+import { User } from '../../models/User';
 import { Property } from '../../models/Property';
 import { Policy } from '../../models/Policy';
 import { RoomType } from '../../models/RoomType';
 import { AppError } from '../../middleware/errorHandler';
 import { AMENITIES_CATALOG } from '../../utils/amenities-catalog';
+import { logActivity } from '../../utils/logActivity';
 
 // Helper to generate route-safe property slug
 async function generateUniquePropertySlug(name: string): Promise<string> {
@@ -89,15 +92,40 @@ const updatePolicySchema = z.object({
 const createRoomTypeSchema = z.object({
   name: z.string().min(2, 'Room name must be at least 2 characters'),
   code: z.string().min(2, 'Room code must be at least 2 characters').toUpperCase(),
+  category: z.enum(['STANDARD', 'DELUXE', 'EXECUTIVE', 'SUITE', 'VILLA', 'PENTHOUSE']).default('STANDARD'),
+  viewType: z.enum(['CITY_VIEW', 'SEA_VIEW', 'GARDEN_VIEW', 'POOL_VIEW', 'COURTYARD_VIEW', 'MOUNTAIN_VIEW', 'INTERNAL']).default('CITY_VIEW'),
+  outdoorSpace: z.enum(['NONE', 'BALCONY', 'TERRACE', 'PATIO', 'PRIVATE_POOL']).default('NONE'),
   description: z.string().default(''),
   maxOccupancy: z.object({
     adults: z.number().min(1, 'At least 1 adult required').default(2),
     children: z.number().min(0).default(1),
-  }),
+  }).default({ adults: 2, children: 1 }),
   bedConfig: z.string().min(1, 'Bed configuration required').default('1 King Bed'),
+  bedding: z.object({
+    primaryBed: z.string().default('King'),
+    bedCount: z.number().default(1),
+    allowsRollaway: z.boolean().default(false),
+    rollawayFee: z.number().default(0),
+    allowsCrib: z.boolean().default(true),
+  }).default({ primaryBed: 'King', bedCount: 1, allowsRollaway: false, rollawayFee: 0, allowsCrib: true }),
+  bathroom: z.object({
+    hasTub: z.boolean().default(false),
+    hasWalkInShower: z.boolean().default(true),
+    hasDoubleVanity: z.boolean().default(false),
+    bathroomCount: z.number().default(1),
+  }).default({ hasTub: false, hasWalkInShower: true, hasDoubleVanity: false, bathroomCount: 1 }),
   roomSizeSqm: z.number().min(0).optional(),
+  roomSizeSqft: z.number().min(0).optional(),
   totalUnits: z.number().min(1, 'At least 1 unit must exist').default(5),
   basePricePerNight: z.number().min(0, 'Base price cannot be negative'),
+  pricing: z.object({
+    basePricePerNight: z.number().optional(),
+    extraAdultRate: z.number().default(0),
+    extraChildRate: z.number().default(0),
+  }).optional(),
+  mealPlan: z.enum(['ROOM_ONLY', 'BREAKFAST_INCLUDED', 'HALF_BOARD', 'ALL_INCLUSIVE']).default('ROOM_ONLY'),
+  isSmokingAllowed: z.boolean().default(false),
+  isAccessible: z.boolean().default(false),
   amenities: z.array(z.string()).default([]),
   images: z.array(z.string()).default([]),
   isActive: z.boolean().default(true),
@@ -105,7 +133,46 @@ const createRoomTypeSchema = z.object({
 
 const updateRoomTypeSchema = createRoomTypeSchema.partial();
 
+const updateMyHotelSchema = z.object({
+  name: z.string().min(2).optional(),
+  contactEmail: z.string().email().optional(),
+  contactPhone: z.string().optional(),
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+});
+
+const changeEmailSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newEmail: z.string().email('Invalid email address'),
+});
+
 export class PortalController {
+  // ─── IMAGE UPLOADS ──────────────────────────────────────────────────
+  static async uploadImage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.file) {
+        throw new AppError('No image file provided', 400, 'NO_FILE_PROVIDED');
+      }
+
+      const relativeUrl = `/uploads/${req.file.filename}`;
+      res.status(200).json({
+        success: true,
+        message: 'Image uploaded successfully',
+        data: {
+          url: relativeUrl,
+          filename: req.file.filename,
+          size: req.file.size,
+          mimetype: req.file.mimetype,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // ─── AMENITIES CATALOG ──────────────────────────────────────────────
   static getAmenitiesCatalog(req: AuthRequest, res: Response): void {
     res.status(200).json({
@@ -128,7 +195,12 @@ export class PortalController {
         throw new AppError('Hotel account not found', 404, 'HOTEL_NOT_FOUND');
       }
 
-      const propertyCount = await Property.countDocuments({ hotelAccountId: req.hotelAccountId });
+      const [propertyCount, publishedPropertyCount, totalRoomTypes, draftPropertyCount] = await Promise.all([
+        Property.countDocuments({ hotelAccountId: req.hotelAccountId }),
+        Property.countDocuments({ hotelAccountId: req.hotelAccountId, status: 'PUBLISHED' }),
+        RoomType.countDocuments({ hotelAccountId: req.hotelAccountId, isActive: true }),
+        Property.countDocuments({ hotelAccountId: req.hotelAccountId, status: 'DRAFT' }),
+      ]);
 
       res.status(200).json({
         success: true,
@@ -136,10 +208,119 @@ export class PortalController {
           hotel,
           metrics: {
             propertyCount,
+            publishedPropertyCount,
+            totalRoomTypes,
+            draftPropertyCount,
             onboardingComplete: propertyCount > 0,
           },
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateMyHotel(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.hotelAccountId) {
+        throw new AppError('No hotel account linked', 404, 'HOTEL_NOT_FOUND');
+      }
+
+      const data = updateMyHotelSchema.parse(req.body);
+      
+      const hotel = await HotelAccount.findByIdAndUpdate(
+        req.hotelAccountId,
+        { $set: data },
+        { returnDocument: 'after', runValidators: true }
+      ).lean();
+
+      if (!hotel) {
+        throw new AppError('Hotel account not found', 404, 'HOTEL_NOT_FOUND');
+      }
+
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: 'HOTEL_ADMIN',
+        action: 'HOTEL_UPDATED',
+        targetType: 'HotelAccount',
+        targetId: req.hotelAccountId,
+      });
+
+      res.status(200).json({ success: true, data: { hotel } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async changePassword(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = changePasswordSchema.parse(req.body);
+
+      const user = await User.findById(req.user!.id).select('+passwordHash');
+      if (!user) {
+        throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+      }
+
+      const isMatch = await bcrypt.compare(data.currentPassword, user.passwordHash);
+      if (!isMatch) {
+        throw new AppError('Current password is incorrect', 401, 'INVALID_CREDENTIALS');
+      }
+
+      const salt = await bcrypt.genSalt(12);
+      user.passwordHash = await bcrypt.hash(data.newPassword, salt);
+      await user.save();
+
+      await logActivity({
+        tenantId: req.hotelAccountId || undefined,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'PASSWORD_CHANGED',
+        targetType: 'User',
+        targetId: user._id,
+      });
+
+      res.status(200).json({ success: true, message: 'Password updated successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async changeEmail(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = changeEmailSchema.parse(req.body);
+      const email = data.newEmail.toLowerCase().trim();
+
+      const user = await User.findById(req.user!.id).select('+passwordHash');
+      if (!user) {
+        throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+      }
+
+      const isMatch = await bcrypt.compare(data.currentPassword, user.passwordHash);
+      if (!isMatch) {
+        throw new AppError('Current password is incorrect', 401, 'INVALID_CREDENTIALS');
+      }
+
+      const existingUser = await User.findOne({ email });
+      if (existingUser && existingUser._id.toString() !== user._id.toString()) {
+        throw new AppError('An account with this email address already exists', 400, 'USER_ALREADY_EXISTS');
+      }
+
+      const oldEmail = user.email;
+      user.email = email;
+      await user.save();
+
+      await logActivity({
+        tenantId: req.hotelAccountId || undefined,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'EMAIL_CHANGED',
+        targetType: 'User',
+        targetId: user._id,
+        metadata: { oldEmail, newEmail: email }
+      });
+
+      res.status(200).json({ success: true, message: 'Email updated successfully', data: { email } });
     } catch (error) {
       next(error);
     }
@@ -220,6 +401,15 @@ export class PortalController {
         hotelAccountId: req.hotelAccountId,
       });
 
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'PROPERTY_CREATED',
+        targetType: 'Property',
+        targetId: property._id,
+      });
+
       res.status(201).json({
         success: true,
         message: 'Property created successfully in draft mode',
@@ -283,6 +473,15 @@ export class PortalController {
       Object.assign(property, data);
       await property.save();
 
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'PROPERTY_UPDATED',
+        targetType: 'Property',
+        targetId: property._id,
+      });
+
       res.status(200).json({
         success: true,
         message: 'Property updated successfully',
@@ -311,6 +510,15 @@ export class PortalController {
       // Soft delete: set status to ARCHIVED
       property.status = 'ARCHIVED';
       await property.save();
+
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'PROPERTY_ARCHIVED',
+        targetType: 'Property',
+        targetId: property._id,
+      });
 
       res.status(200).json({
         success: true,
@@ -374,6 +582,15 @@ export class PortalController {
         { $set: { ...data, hotelAccountId: property.hotelAccountId } },
         { returnDocument: 'after', upsert: true, runValidators: true }
       );
+
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'POLICY_UPDATED',
+        targetType: 'Policy',
+        targetId: policy!._id,
+      });
 
       res.status(200).json({
         success: true,
@@ -441,6 +658,15 @@ export class PortalController {
         hotelAccountId: property.hotelAccountId,
       });
 
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'ROOM_TYPE_CREATED',
+        targetType: 'RoomType',
+        targetId: room._id,
+      });
+
       res.status(201).json({
         success: true,
         message: 'Room type added to catalog successfully',
@@ -482,6 +708,15 @@ export class PortalController {
       Object.assign(room, data);
       await room.save();
 
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'ROOM_TYPE_UPDATED',
+        targetType: 'RoomType',
+        targetId: room._id,
+      });
+
       res.status(200).json({
         success: true,
         message: 'Room type updated successfully',
@@ -510,6 +745,15 @@ export class PortalController {
       // Soft deactivate
       room.isActive = false;
       await room.save();
+
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'ROOM_TYPE_DEACTIVATED',
+        targetType: 'RoomType',
+        targetId: room._id,
+      });
 
       res.status(200).json({
         success: true,
@@ -573,6 +817,15 @@ export class PortalController {
       property.status = 'PUBLISHED';
       await property.save();
 
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'PROPERTY_PUBLISHED',
+        targetType: 'Property',
+        targetId: property._id,
+      });
+
       res.status(200).json({
         success: true,
         message: 'Property successfully published! It is now eligible for public showcase.',
@@ -600,6 +853,15 @@ export class PortalController {
 
       property.status = 'DRAFT';
       await property.save();
+
+      await logActivity({
+        tenantId: req.hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: req.user!.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HOTEL_ADMIN',
+        action: 'PROPERTY_UNPUBLISHED',
+        targetType: 'Property',
+        targetId: property._id,
+      });
 
       res.status(200).json({
         success: true,
