@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "seed": "tsx src/scripts/seed.ts",
     "test:tenancy": "tsx src/scripts/test-tenancy.ts",
-    "test:a2": "tsx src/scripts/test-a2-onboarding.ts"
+    "test:a2": "tsx src/scripts/test-a2-onboarding.ts",
+    "test:a3-a4": "tsx src/scripts/test-a3-a4.ts"
   },
   "keywords": [],
   "author": "",
