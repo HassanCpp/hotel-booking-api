@@ -2,6 +2,9 @@ import mongoose from 'mongoose';
 import http from 'http';
 import app from '../app';
 import { connectDB } from '../config/database';
+import { HotelAccount } from '../models/HotelAccount';
+import { User } from '../models/User';
+import { HotelMembership } from '../models/HotelMembership';
 import { ActivityLog } from '../models/ActivityLog';
 
 let server: http.Server;
@@ -38,7 +41,8 @@ async function runEnhancementTests() {
   let superAdminToken = '';
   let hotelAdminToken = '';
   let hotelId = '';
-  let adminUserId = '';
+  const testTimestamp = Date.now();
+  const testAdminEmail = `test_enhancement_${testTimestamp}@testsuite.com`;
 
   try {
     // 1. Super Admin Login
@@ -65,16 +69,25 @@ async function runEnhancementTests() {
     console.log('     Properties:', statsRes.data.data.totalProperties, `(${statsRes.data.data.publishedProperties} published)`);
     console.log('     Room types:', statsRes.data.data.totalRoomTypes);
 
-    // 3. Find a hotel to test with
-    console.log('\n--- 3. Target Hotel Identification ---');
-    const hotelsRes = await request('/admin/hotels', {
+    // 3. Create an Isolated Test Hotel (Does not touch user's real hotels)
+    console.log('\n--- 3. Isolated Test Hotel Creation ---');
+    const onboardRes = await request('/admin/hotels', {
+      method: 'POST',
       headers: { Authorization: `Bearer ${superAdminToken}` },
+      body: JSON.stringify({
+        name: `Automated Test Hotel ${testTimestamp}`,
+        contactEmail: `contact_${testTimestamp}@testsuite.com`,
+        country: 'Pakistan',
+        currency: 'PKR',
+        timezone: 'Asia/Karachi',
+        adminFullName: 'Temporary Test Admin',
+        adminEmail: testAdminEmail,
+        adminPassword: 'InitialPassword123!',
+      }),
     });
-    const hotel = hotelsRes.data.data.hotels[0];
-    if (!hotel) throw new Error('No hotel found to test');
-    hotelId = hotel._id;
-    adminUserId = hotel.primaryAdminUserId?._id || hotel.primaryAdminUserId;
-    console.log(`  ✅ PASS: Testing against hotel "${hotel.name}" (ID: ${hotelId})`);
+    if (onboardRes.status !== 201) throw new Error(`Failed to create test hotel: ${JSON.stringify(onboardRes.data)}`);
+    hotelId = onboardRes.data.data?.hotel?.id || onboardRes.data.data?.hotel?._id;
+    console.log(`  ✅ PASS: Created isolated test hotel (ID: ${hotelId})`);
 
     // 4. Super Admin Resets Hotel Admin Password
     console.log('\n--- 4. Super Admin Password Reset ---');
@@ -87,11 +100,10 @@ async function runEnhancementTests() {
     console.log('  ✅ PASS: Super Admin reset hotel admin password (200 OK)');
 
     // Verify login with new password
-    const hotelAdminEmail = hotel.primaryAdminUserId?.email || hotel.contactEmail;
     const newLoginRes = await request('/auth/login', {
       method: 'POST',
       body: JSON.stringify({
-        email: hotelAdminEmail,
+        email: testAdminEmail,
         password: 'NewPassword123!',
       }),
     });
@@ -105,7 +117,7 @@ async function runEnhancementTests() {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${hotelAdminToken}` },
       body: JSON.stringify({
-        name: `${hotel.name} Updated`,
+        name: `Automated Test Hotel Renamed`,
         contactPhone: '+92 300 9999999',
       }),
     });
@@ -119,21 +131,21 @@ async function runEnhancementTests() {
       headers: { Authorization: `Bearer ${hotelAdminToken}` },
       body: JSON.stringify({
         currentPassword: 'NewPassword123!',
-        newPassword: 'Heritage123!', // restore to original
+        newPassword: 'FinalPassword123!',
       }),
     });
     if (changePwRes.status !== 200) throw new Error(`Self password change failed: ${JSON.stringify(changePwRes.data)}`);
     console.log('  ✅ PASS: Hotel Admin changed own password (200 OK)');
 
-    // Verify login with restored password
+    // Verify login with updated password
     const restoredLoginRes = await request('/auth/login', {
       method: 'POST',
       body: JSON.stringify({
-        email: hotelAdminEmail,
-        password: 'Heritage123!',
+        email: testAdminEmail,
+        password: 'FinalPassword123!',
       }),
     });
-    if (restoredLoginRes.status !== 200) throw new Error('Login with restored password failed');
+    if (restoredLoginRes.status !== 200) throw new Error('Login with final password failed');
     console.log('  ✅ PASS: Verified login with updated password');
 
     // 7. Activity Log Verification
@@ -153,7 +165,7 @@ async function runEnhancementTests() {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${superAdminToken}` },
       body: JSON.stringify({
-        fullName: 'Updated Admin Name',
+        fullName: 'Final Test Admin Name',
         status: 'ACTIVE',
       }),
     });
@@ -179,6 +191,14 @@ async function runEnhancementTests() {
     console.log('🎯 ALL PHASE A ENHANCEMENT TESTS PASSED!');
     console.log('===========================================\n');
   } finally {
+    // Clean up the isolated test hotel and users so test is 100% idempotent
+    if (hotelId) {
+      await HotelAccount.findByIdAndDelete(hotelId);
+      await User.deleteMany({ email: { $regex: /test_enhancement_/ } });
+      await HotelMembership.deleteMany({ hotelAccountId: hotelId });
+      await ActivityLog.deleteMany({ tenantId: hotelId });
+      console.log('🧹 Cleaned up temporary test hotel and data.');
+    }
     if (server) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
