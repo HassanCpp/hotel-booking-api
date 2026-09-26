@@ -133,44 +133,105 @@ npm run test:enhancements
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started & Database Setup
 
 ### 1. Prerequisites
-- **Node.js:** v18+
-- **MongoDB:** Running locally on `mongodb://localhost:27017`
+- **Node.js:** v18.0.0 or higher
+- **MongoDB:** A running MongoDB instance (local, Docker, or Atlas cloud)
 
-### 2. Installation
+---
+
+### 2. Setting Up MongoDB Database
+Choose one of the following methods to run MongoDB:
+
+#### Option A: Docker (Fastest)
+If you have Docker installed, start a container with one command:
 ```bash
-npm install
+docker run -d -p 27017:27017 --name hotel-mongo mongo:latest
 ```
 
-### 3. Environment Variables (`.env`)
-```env
-PORT=5000
-NODE_ENV=development
-CLIENT_URL=http://localhost:5173
-MONGO_URI=mongodb://localhost:27017/ai_hotel_agent
-JWT_ACCESS_SECRET=super_secret_access_jwt_key_2026_hotel_agent
-JWT_REFRESH_SECRET=super_secret_refresh_jwt_key_2026_hotel_agent
-JWT_ACCESS_EXPIRES_IN=15m
-JWT_REFRESH_EXPIRES_IN=7d
+#### Option B: Local MongoDB Service
+If MongoDB Community Server is installed locally on your system:
+```bash
+# Windows (cmd / PowerShell as Administrator):
+net start MongoDB
+
+# macOS (Homebrew):
+brew services start mongodb-community
 ```
 
-### 4. Database Seeding
+#### Option C: Cloud MongoDB Atlas
+Create a free database cluster on [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) and obtain your connection URI (e.g. `mongodb+srv://<username>:<password>@cluster0.mongodb.net/ai_hotel_agent?retryWrites=true&w=majority`).
+
+---
+
+### 3. Installation & Environment Setup
+
+1. Install backend dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Create your `.env` configuration file from the provided template:
+   ```bash
+   # Linux / macOS / PowerShell:
+   cp .env.example .env
+
+   # Windows Command Prompt (CMD):
+   copy .env.example .env
+   ```
+
+3. Configure your `.env` variables if needed:
+   ```env
+   PORT=5000
+   NODE_ENV=development
+   CLIENT_URL=http://localhost:5173
+   MONGO_URI=mongodb://localhost:27017/ai_hotel_agent
+   JWT_ACCESS_SECRET=super_secret_access_jwt_key_2026_hotel_agent
+   JWT_REFRESH_SECRET=super_secret_refresh_jwt_key_2026_hotel_agent
+   JWT_ACCESS_EXPIRES_IN=15m
+   JWT_REFRESH_EXPIRES_IN=7d
+   ```
+   *(If using MongoDB Atlas, replace `MONGO_URI` with your Atlas connection string).*
+
+---
+
+### 4. Database Seeding (`npm run seed`)
+
+Populate the database with initial collections, schema validation, and pre-configured test hotel tenants:
+
 ```bash
 npm run seed
 ```
 
-#### Default Seed Accounts:
-| Role | Email | Password | Scope |
-| :--- | :--- | :--- | :--- |
-| **Super Admin** | `superadmin@hotelagent.com` | `Admin123!` | Platform-wide |
-| **Hotel A Admin** | `admin@heritagehotel.com` | `Heritage123!` | The Grand Heritage Lahore |
-| **Hotel B Admin** | `admin@sereneresort.com` | `Oasis123!` | Serene Oasis Resort |
+#### What the Seed Script (`src/scripts/seed.ts`) Does:
+* Cleans up any prior test records to ensure a fresh, consistent state.
+* Hashes passwords using `bcrypt` (12 salt rounds).
+* Creates the platform **Super Admin**.
+* Creates **Hotel A** (*The Grand Heritage Lahore*), its admin membership, and a published demo property.
+* Creates **Hotel B** (*Serene Oasis Resort*), its admin membership, and a published demo property for multi-tenant isolation testing.
 
-### 5. Running Server
+#### Default Seeded Test Credentials:
+| Role | Email | Password | Scope & Purpose |
+| :--- | :--- | :--- | :--- |
+| **Super Admin** | `superadmin@hotelagent.com` | `Admin123!` | Platform-wide oversight, onboarding wizard, audit trails |
+| **Hotel A Admin** | `admin@heritagehotel.com` | `Heritage123!` | Primary hotel management (*The Grand Heritage Lahore*) |
+| **Hotel B Admin** | `admin@sereneresort.com` | `Oasis123!` | Secondary hotel (*Serene Oasis Resort*) for tenancy tests |
+
+---
+
+### 5. Running the Backend Server
+
 ```bash
+# Development mode with hot-reloading (tsx):
 npm run dev
+
+# Production build and run:
+npm run build
+npm start
 ```
-API runs on: `http://localhost:5000`  
-Static uploads served at: `http://localhost:5000/uploads/`
+
+* API Endpoint: **`http://localhost:5000`**
+* Health Check: **`http://localhost:5000/api/v1/health`**
+* Static File Uploads: **`http://localhost:5000/uploads/`**
+
