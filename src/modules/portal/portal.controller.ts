@@ -33,9 +33,35 @@ async function generateUniquePropertySlug(name: string): Promise<string> {
   return slug;
 }
 
-// Schemas
-const createPropertySchema = z.object({
+// Property Validation Schemas
+const propertyBaseFields = {
   name: z.string().min(2, 'Property name must be at least 2 characters'),
+  description: z.string(),
+  propertyType: z.enum(['HOTEL', 'RESORT', 'BOUTIQUE', 'APARTMENT']),
+  address: z.object({
+    street: z.string().optional(),
+    city: z.string().min(1, 'City is required'),
+    state: z.string().optional(),
+    country: z.string(),
+    postalCode: z.string().optional(),
+    coordinates: z
+      .object({
+        lat: z.number(),
+        lng: z.number(),
+      })
+      .optional(),
+  }),
+  contactEmail: z.string().email().optional(),
+  contactPhone: z.string().optional(),
+  checkInTime: z.string(),
+  checkOutTime: z.string(),
+  coverImage: z.string().optional(),
+  gallery: z.array(z.string()),
+  amenities: z.array(z.string()),
+};
+
+const createPropertySchema = z.object({
+  ...propertyBaseFields,
   description: z.string().default(''),
   propertyType: z.enum(['HOTEL', 'RESORT', 'BOUTIQUE', 'APARTMENT']).default('HOTEL'),
   address: z.object({
@@ -51,16 +77,32 @@ const createPropertySchema = z.object({
       })
       .optional(),
   }),
-  contactEmail: z.string().email().optional(),
-  contactPhone: z.string().optional(),
   checkInTime: z.string().default('14:00'),
   checkOutTime: z.string().default('12:00'),
-  coverImage: z.string().optional(),
   gallery: z.array(z.string()).default([]),
   amenities: z.array(z.string()).default([]),
 });
 
-const updatePropertySchema = createPropertySchema.partial();
+const updatePropertySchema = z
+  .object({
+    ...propertyBaseFields,
+    address: z
+      .object({
+        street: z.string().optional(),
+        city: z.string().optional(),
+        state: z.string().optional(),
+        country: z.string().optional(),
+        postalCode: z.string().optional(),
+        coordinates: z
+          .object({
+            lat: z.number(),
+            lng: z.number(),
+          })
+          .optional(),
+      })
+      .optional(),
+  })
+  .partial();
 
 const updatePolicySchema = z.object({
   cancellationPolicy: z.string().min(5, 'Cancellation policy required'),
@@ -89,9 +131,53 @@ const updatePolicySchema = z.object({
     .default([]),
 });
 
-const createRoomTypeSchema = z.object({
+// Room Type Validation Schemas
+const roomTypeBaseFields = {
   name: z.string().min(2, 'Room name must be at least 2 characters'),
   code: z.string().min(2, 'Room code must be at least 2 characters').toUpperCase(),
+  category: z.enum(['STANDARD', 'DELUXE', 'EXECUTIVE', 'SUITE', 'VILLA', 'PENTHOUSE']),
+  viewType: z.enum(['CITY_VIEW', 'SEA_VIEW', 'GARDEN_VIEW', 'POOL_VIEW', 'COURTYARD_VIEW', 'MOUNTAIN_VIEW', 'INTERNAL']),
+  outdoorSpace: z.enum(['NONE', 'BALCONY', 'TERRACE', 'PATIO', 'PRIVATE_POOL']),
+  description: z.string(),
+  maxOccupancy: z.object({
+    adults: z.number().min(1, 'At least 1 adult required'),
+    children: z.number().min(0),
+  }),
+  bedConfig: z.string().min(1, 'Bed configuration required'),
+  bedding: z.object({
+    primaryBed: z.string().optional(),
+    bedCount: z.number().optional(),
+    allowsRollaway: z.boolean().optional(),
+    rollawayFee: z.number().optional(),
+    allowsCrib: z.boolean().optional(),
+  }),
+  bathroom: z.object({
+    hasTub: z.boolean().optional(),
+    hasWalkInShower: z.boolean().optional(),
+    hasDoubleVanity: z.boolean().optional(),
+    bathroomCount: z.number().optional(),
+  }),
+  roomSizeSqm: z.number().min(0).optional(),
+  roomSizeSqft: z.number().min(0).optional(),
+  totalUnits: z.number().min(1, 'At least 1 unit must exist'),
+  basePricePerNight: z.number().min(0, 'Base price cannot be negative'),
+  pricing: z
+    .object({
+      basePricePerNight: z.number().optional(),
+      extraAdultRate: z.number().optional(),
+      extraChildRate: z.number().optional(),
+    })
+    .optional(),
+  mealPlan: z.enum(['ROOM_ONLY', 'BREAKFAST_INCLUDED', 'HALF_BOARD', 'ALL_INCLUSIVE']),
+  isSmokingAllowed: z.boolean(),
+  isAccessible: z.boolean(),
+  amenities: z.array(z.string()),
+  images: z.array(z.string()),
+  isActive: z.boolean(),
+};
+
+const createRoomTypeSchema = z.object({
+  ...roomTypeBaseFields,
   category: z.enum(['STANDARD', 'DELUXE', 'EXECUTIVE', 'SUITE', 'VILLA', 'PENTHOUSE']).default('STANDARD'),
   viewType: z.enum(['CITY_VIEW', 'SEA_VIEW', 'GARDEN_VIEW', 'POOL_VIEW', 'COURTYARD_VIEW', 'MOUNTAIN_VIEW', 'INTERNAL']).default('CITY_VIEW'),
   outdoorSpace: z.enum(['NONE', 'BALCONY', 'TERRACE', 'PATIO', 'PRIVATE_POOL']).default('NONE'),
@@ -114,15 +200,14 @@ const createRoomTypeSchema = z.object({
     hasDoubleVanity: z.boolean().default(false),
     bathroomCount: z.number().default(1),
   }).default({ hasTub: false, hasWalkInShower: true, hasDoubleVanity: false, bathroomCount: 1 }),
-  roomSizeSqm: z.number().min(0).optional(),
-  roomSizeSqft: z.number().min(0).optional(),
   totalUnits: z.number().min(1, 'At least 1 unit must exist').default(5),
-  basePricePerNight: z.number().min(0, 'Base price cannot be negative'),
-  pricing: z.object({
-    basePricePerNight: z.number().optional(),
-    extraAdultRate: z.number().default(0),
-    extraChildRate: z.number().default(0),
-  }).optional(),
+  pricing: z
+    .object({
+      basePricePerNight: z.number().optional(),
+      extraAdultRate: z.number().default(0),
+      extraChildRate: z.number().default(0),
+    })
+    .optional(),
   mealPlan: z.enum(['ROOM_ONLY', 'BREAKFAST_INCLUDED', 'HALF_BOARD', 'ALL_INCLUSIVE']).default('ROOM_ONLY'),
   isSmokingAllowed: z.boolean().default(false),
   isAccessible: z.boolean().default(false),
@@ -131,7 +216,7 @@ const createRoomTypeSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-const updateRoomTypeSchema = createRoomTypeSchema.partial();
+const updateRoomTypeSchema = z.object(roomTypeBaseFields).partial();
 
 const updateMyHotelSchema = z.object({
   name: z.string().min(2).optional(),
@@ -469,8 +554,15 @@ export class PortalController {
 
       const data = updatePropertySchema.parse(req.body);
 
-      // If name changed, optionally update slug if requested
-      Object.assign(property, data);
+      // If gallery is updated and coverImage wasn't specified, sync coverImage to first photo
+      if (data.gallery !== undefined && data.coverImage === undefined) {
+        data.coverImage = data.gallery[0] || '';
+      }
+
+      // Apply partial updates and ensure array fields are marked modified
+      property.set(data);
+      if (data.gallery !== undefined) property.markModified('gallery');
+      if (data.amenities !== undefined) property.markModified('amenities');
       await property.save();
 
       await logActivity({
@@ -705,7 +797,9 @@ export class PortalController {
         }
       }
 
-      Object.assign(room, data);
+      room.set(data);
+      if (data.images !== undefined) room.markModified('images');
+      if (data.amenities !== undefined) room.markModified('amenities');
       await room.save();
 
       await logActivity({
