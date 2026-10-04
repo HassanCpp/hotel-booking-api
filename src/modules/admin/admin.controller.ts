@@ -11,6 +11,8 @@ import { generateUniqueHotelSlug } from '../../utils/slugify';
 import { logActivity } from '../../utils/logActivity';
 import { ActivityLog } from '../../models/ActivityLog';
 import { RoomType } from '../../models/RoomType';
+import { Policy } from '../../models/Policy';
+import { FeaturedDestination } from '../../models/FeaturedDestination';
 
 const resetPasswordSchema = z.object({
   newPassword: z.string().min(6, 'Password must be at least 6 characters'),
@@ -62,7 +64,9 @@ export class AdminController {
         onboardingHotels,
         publishedProperties,
         totalRoomTypes,
-        recentActivity
+        recentActivity,
+        inventoryAgg,
+        propertyTypeAgg,
       ] = await Promise.all([
         HotelAccount.countDocuments(),
         User.countDocuments(),
@@ -72,8 +76,22 @@ export class AdminController {
         HotelAccount.countDocuments({ status: 'ONBOARDING' }),
         Property.countDocuments({ status: 'PUBLISHED' }),
         RoomType.countDocuments({ isActive: true }),
-        ActivityLog.find().sort({ createdAt: -1 }).limit(15).populate('actorId', 'fullName email').lean()
+        ActivityLog.find().sort({ createdAt: -1 }).limit(15).populate('actorId', 'fullName email').lean(),
+        RoomType.aggregate([
+          { $match: { isActive: true } },
+          { $group: { _id: null, totalUnits: { $sum: '$totalUnits' } } },
+        ]),
+        Property.aggregate([
+          { $match: { status: { $ne: 'ARCHIVED' } } },
+          { $group: { _id: '$propertyType', count: { $sum: 1 } } },
+        ]),
       ]);
+
+      const totalSellableUnits = inventoryAgg[0]?.totalUnits || 0;
+      const propertyTypeDistribution: Record<string, number> = {};
+      propertyTypeAgg.forEach((item: any) => {
+        if (item._id) propertyTypeDistribution[item._id] = item.count;
+      });
 
       res.status(200).json({
         success: true,
@@ -86,6 +104,8 @@ export class AdminController {
           onboardingHotels,
           publishedProperties,
           totalRoomTypes,
+          totalSellableUnits,
+          propertyTypeDistribution,
           recentActivity,
           platformStatus: 'OPERATIONAL',
         },
@@ -445,6 +465,308 @@ export class AdminController {
       res.status(200).json({
         success: true,
         data: { activities }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getHotelProperties(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const hotel = await HotelAccount.findById(id);
+      if (!hotel) {
+        throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
+      }
+
+      const properties = await Property.find({ hotelAccountId: id })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const propertiesWithDetails = await Promise.all(
+        properties.map(async (p) => {
+          const roomCount = await RoomType.countDocuments({ propertyId: p._id, isActive: true });
+          const totalUnits = await RoomType.aggregate([
+            { $match: { propertyId: p._id, isActive: true } },
+            { $group: { _id: null, units: { $sum: '$totalUnits' } } },
+          ]);
+          return {
+            ...p,
+            roomCount,
+            totalUnits: totalUnits[0]?.units || 0,
+          };
+        })
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          properties: propertiesWithDetails,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteProperty(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { propertyId } = req.params;
+      const property = await Property.findById(propertyId);
+      if (!property) {
+        throw new AppError('Property not found', 404, 'PROPERTY_NOT_FOUND');
+      }
+
+      const hotelAccountId = property.hotelAccountId;
+      const propertyName = property.name;
+
+      // Cascade purge: delete associated room types and policies
+      await Promise.all([
+        RoomType.deleteMany({ propertyId: property._id }),
+        Policy.deleteMany({ propertyId: property._id }),
+        Property.findByIdAndDelete(property._id),
+      ]);
+
+      await logActivity({
+        tenantId: hotelAccountId,
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'PROPERTY_PURGED',
+        targetType: 'Property',
+        targetId: property._id,
+        metadata: { propertyName, hotelAccountId },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Property "${propertyName}" and its room catalog have been permanently deleted.`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteHotel(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const hotel = await HotelAccount.findById(id);
+      if (!hotel) {
+        throw new AppError('Hotel not found', 404, 'HOTEL_NOT_FOUND');
+      }
+
+      const hotelName = hotel.name;
+      const primaryAdminUserId = hotel.primaryAdminUserId;
+
+      // Cascade purge: delete all associated rooms, policies, properties, and memberships
+      await Promise.all([
+        RoomType.deleteMany({ hotelAccountId: hotel._id }),
+        Policy.deleteMany({ hotelAccountId: hotel._id }),
+        Property.deleteMany({ hotelAccountId: hotel._id }),
+        HotelMembership.deleteMany({ hotelAccountId: hotel._id }),
+      ]);
+
+      // Remove the assigned admin user if they are not super admin
+      if (primaryAdminUserId) {
+        const adminUser = await User.findById(primaryAdminUserId);
+        if (adminUser && adminUser.role !== 'SUPER_ADMIN') {
+          await User.findByIdAndDelete(primaryAdminUserId);
+        }
+      }
+
+      await HotelAccount.findByIdAndDelete(hotel._id);
+
+      await logActivity({
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'HOTEL_PURGED',
+        targetType: 'HotelAccount',
+        targetId: hotel._id,
+        metadata: { hotelName, slug: hotel.slug },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Hotel account "${hotelName}" and all associated data have been permanently deleted.`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // ==========================================
+  // MARKETPLACE CURATION & DESTINATIONS CMS
+  // ==========================================
+
+  static async listDestinations(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const destinations = await FeaturedDestination.find().sort({ displayOrder: 1, createdAt: -1 });
+      res.status(200).json({
+        success: true,
+        data: {
+          destinations,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createDestination(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const schema = z.object({
+        city: z.string().min(1, 'City is required'),
+        country: z.string().min(1, 'Country is required'),
+        countryCode: z.string().min(2).max(2),
+        subtitle: z.string().optional().default(''),
+        coverImage: z.string().min(1, 'Cover image is required'),
+        displayOrder: z.number().int().default(0),
+        targetCountries: z.array(z.string()).default(['ALL']),
+        isActive: z.boolean().default(true),
+        isPopular: z.boolean().default(true),
+      });
+
+      const data = schema.parse(req.body);
+      const destination = await FeaturedDestination.create({
+        ...data,
+        countryCode: data.countryCode.toUpperCase(),
+        targetCountries: data.targetCountries.map((c) => c.toUpperCase()),
+      });
+
+      await logActivity({
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'DESTINATION_CREATED',
+        targetType: 'FeaturedDestination',
+        targetId: destination._id,
+        metadata: { city: destination.city, country: destination.country },
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Destination "${destination.city}" created successfully.`,
+        data: { destination },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateDestination(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const schema = z.object({
+        city: z.string().min(1).optional(),
+        country: z.string().min(1).optional(),
+        countryCode: z.string().min(2).max(2).optional(),
+        subtitle: z.string().optional(),
+        coverImage: z.string().min(1).optional(),
+        displayOrder: z.number().int().optional(),
+        targetCountries: z.array(z.string()).optional(),
+        isActive: z.boolean().optional(),
+        isPopular: z.boolean().optional(),
+      });
+
+      const data = schema.parse(req.body);
+
+      const updateData: any = { ...data };
+      if (data.countryCode) updateData.countryCode = data.countryCode.toUpperCase();
+      if (data.targetCountries) updateData.targetCountries = data.targetCountries.map((c) => c.toUpperCase());
+
+      const destination = await FeaturedDestination.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { returnDocument: 'after', runValidators: true }
+      );
+
+      if (!destination) {
+        throw new AppError('Destination not found', 404, 'DESTINATION_NOT_FOUND');
+      }
+
+      await logActivity({
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'DESTINATION_UPDATED',
+        targetType: 'FeaturedDestination',
+        targetId: destination._id,
+        metadata: { city: destination.city },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Destination updated successfully.',
+        data: { destination },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteDestination(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const destination = await FeaturedDestination.findByIdAndDelete(id);
+      if (!destination) {
+        throw new AppError('Destination not found', 404, 'DESTINATION_NOT_FOUND');
+      }
+
+      await logActivity({
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: 'DESTINATION_DELETED',
+        targetType: 'FeaturedDestination',
+        targetId: destination._id,
+        metadata: { city: destination.city },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Destination "${destination.city}" deleted.`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async togglePropertyFeature(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { propertyId } = req.params;
+      const schema = z.object({
+        isFeaturedOnHome: z.boolean(),
+        featuredPriority: z.number().int().min(0).default(0),
+      });
+
+      const { isFeaturedOnHome, featuredPriority } = schema.parse(req.body);
+
+      const property = await Property.findByIdAndUpdate(
+        propertyId,
+        {
+          $set: {
+            isFeaturedOnHome,
+            featuredPriority,
+          },
+        },
+        { returnDocument: 'after' }
+      );
+
+      if (!property) {
+        throw new AppError('Property not found', 404, 'PROPERTY_NOT_FOUND');
+      }
+
+      await logActivity({
+        actorId: req.user!.id,
+        actorRole: 'SUPER_ADMIN',
+        action: isFeaturedOnHome ? 'PROPERTY_FEATURED' : 'PROPERTY_UNFEATURED',
+        targetType: 'Property',
+        targetId: property._id,
+        metadata: { propertyName: property.name, isFeaturedOnHome, featuredPriority },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: isFeaturedOnHome
+          ? `Property "${property.name}" is now featured on the homepage.`
+          : `Property "${property.name}" removed from featured homepage slots.`,
+        data: { property },
       });
     } catch (error) {
       next(error);

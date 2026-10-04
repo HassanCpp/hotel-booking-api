@@ -11,7 +11,9 @@
     "test:tenancy": "tsx src/scripts/test-tenancy.ts",
     "test:a2": "tsx src/scripts/test-a2-onboarding.ts",
     "test:a3-a4": "tsx src/scripts/test-a3-a4.ts",
-    "test:enhancements": "tsx src/scripts/test-enhancements.ts"
+    "test:enhancements": "tsx src/scripts/test-enhancements.ts",
+    "test:marketplace": "tsx src/scripts/test-marketplace-backend.ts",
+    "test:qa": "tsx src/scripts/test-full-system-qa.ts"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +28,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.10.0",
     "multer": "^2.4.0",
+    "nodemailer": "^10.0.13",
     "zod": "^4.6.2"
   },
   "devDependencies": {
@@ -36,6 +39,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.20.2",
+    "@types/nodemailer": "^8.0.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"

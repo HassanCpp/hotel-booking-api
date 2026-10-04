@@ -7,6 +7,8 @@ import { errorHandler } from './middleware/errorHandler';
 import { authRoutes } from './modules/auth/auth.routes';
 import { adminRoutes } from './modules/admin/admin.routes';
 import { portalRoutes } from './modules/portal/portal.routes';
+import { marketplaceRoutes } from './modules/marketplace/marketplace.routes';
+import { guestRoutes } from './modules/guest/guest.routes';
 
 const app = express();
 
@@ -39,6 +41,8 @@ app.get('/api/v1/health', (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/portal', portalRoutes);
+app.use('/api/v1/marketplace', marketplaceRoutes);
+app.use('/api/v1/guest', guestRoutes);
 
 // Centralized error handling
 app.use(errorHandler);

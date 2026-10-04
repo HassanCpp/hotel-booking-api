@@ -18,5 +18,15 @@ router.patch('/hotels/:id/admin-password', AdminController.resetHotelAdminPasswo
 router.patch('/hotels/:id/admin-email', AdminController.updateHotelAdminEmail);
 router.patch('/hotels/:id/admin-profile', AdminController.updateHotelAdminProfile);
 router.get('/hotels/:id/activity', AdminController.getHotelActivity);
+router.get('/hotels/:id/properties', AdminController.getHotelProperties);
+router.delete('/properties/:propertyId', AdminController.deleteProperty);
+router.delete('/hotels/:id', AdminController.deleteHotel);
+
+// Destinations Curation & Featured Properties CMS
+router.get('/destinations', AdminController.listDestinations);
+router.post('/destinations', AdminController.createDestination);
+router.patch('/destinations/:id', AdminController.updateDestination);
+router.delete('/destinations/:id', AdminController.deleteDestination);
+router.patch('/properties/:propertyId/feature', AdminController.togglePropertyFeature);
 
 export const adminRoutes = router;

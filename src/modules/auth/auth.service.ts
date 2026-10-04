@@ -18,6 +18,10 @@ export class AuthService {
       throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
     }
 
+    if (!user.passwordHash) {
+      throw new AppError('This account was registered via Google sign-in. Please sign in with Google.', 401, 'INVALID_CREDENTIALS');
+    }
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');

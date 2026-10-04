@@ -1,56 +1,30 @@
-# Hotel Booking API — Multi-Tenant Hospitality Engine
+# Hotel Booking API — Multi-Tenant Hospitality & Marketplace Engine
 
 > **Repository:** [hotel-booking-api](https://github.com/abanchaudry/hotel-booking-api)  
-> **Status:** Phase 1 (Phase A) Complete — 49/49 Automated Tests Passing  
-> **Core Stack:** Node.js • Express • TypeScript • MongoDB (Mongoose) • Multer • JWT • Zod
+> **Status:** Production-Ready • 85/85 Automated QA Tests Passing (100%)  
+> **Core Stack:** Node.js • Express • TypeScript • MongoDB (Mongoose) • Multer • JWT • Zod • Bcrypt
 
 ---
 
 ## 📖 Overview
 
-The **Hotel Booking API** is an enterprise-grade, multi-tenant backend engine designed for high-end hospitality groups and hotel commerce. It serves as the authoritative source of truth for hotel accounts, physical properties, luxury room inventories, structured policies, media assets, activity auditing, and AI concierge pipelines.
+The **Hotel Booking API** is an enterprise-grade hospitality and marketplace engine designed for boutique hotel groups, multi-property operators, and guest commerce. It combines:
+1. **Multi-Tenant Hotel Operations:** Tenant isolation, PMS inventory controls, 14-day tape chart availability matrix, dynamic rate plans, promo codes, front-desk reservations lifecycle, and verified review moderation.
+2. **Super Admin Platform Console:** Global platform analytics, hotel onboarding wizard, tenant credential administration, audit logging, and marketplace curation.
+3. **Public Marketplace & Guest Commerce:** Geo-targeted home feeds, Airbnb-grade search & filtering, real-time rate quotation, idempotent booking pipeline, digital stay vouchers, and synchronized wishlists.
 
 ---
 
-## 🏛 Architecture & Multi-Tenancy
+## 🏛 Architecture & Tenancy Security
 
-The API enforces strict **server-side tenant isolation** across all data operations:
-* **Tenant Root (`HotelAccount`):** Each hotel organization is an isolated tenant with its own timezone, currency, contact details, and status (`ONBOARDING`, `ACTIVE`, `SUSPENDED`, `ARCHIVED`).
-* **Membership Bridge (`HotelMembership`):** Links users to hotel accounts with role-based permissions (`HOTEL_ADMIN`, `HOTEL_STAFF`).
-* **Tenant Isolation Guard (`tenantGuard`):** Validates request-level hotel boundaries to prevent cross-tenant leakage (`403 CROSS_TENANT_ACCESS_DENIED`).
+* **Tenant Isolation (`HotelAccount`):** Every hotel organization is an isolated tenant with its own timezone, currency, contact details, and lifecycle states (`ONBOARDING`, `ACTIVE`, `SUSPENDED`, `ARCHIVED`).
+* **Tenant Isolation Guard (`tenantGuard`):** Request-level boundaries strictly prevent cross-tenant data access (`403 CROSS_TENANT_ACCESS_DENIED`).
 * **Dual-Token Authentication:**
   * **Access Token:** Short-lived (15 minutes), passed via `Authorization: Bearer <token>`.
   * **Refresh Token:** Long-lived (7 days), stored securely in an `HttpOnly`, `SameSite=Strict` cookie.
-* **Audit Logging Engine (`ActivityLog`):** Non-blocking, fail-safe tracking of all administrative and tenant actions.
-
----
-
-## 🏆 Phase 1 Completed Milestones
-
-### A1 — Foundation & Multi-Tenant Access
-- Dual-token JWT authentication flow with silent refresh and secure cookies.
-- Tenant root models (`HotelAccount`, `HotelMembership`, `User`).
-- Middleware security pipeline (`requireAuth`, `requireRole`, `tenantGuard`, `errorHandler`).
-
-### A2 — Hotel Onboarding & Tenant Lifecycle
-- Super Admin onboarding API with unique route-safe slug generation (`utils/slugify.ts`).
-- Full tenant lifecycle states: `ONBOARDING` ➔ `ACTIVE` ➔ `SUSPENDED` ➔ `ARCHIVED`.
-- Suspension enforcement: immediately blocks suspended hotel admins and staff at both auth and middleware layers.
-
-### A3 — Properties & Operating Content
-- Property CRUD with address coordinates, amenities taxonomy, and cover imagery.
-- Default structured operating policy generation (cancellation terms, deadline hours, pet policies, smoking policies, children policies).
-
-### A4 — Room Catalog & Publication Validator
-- Sellable room type catalog with capacity rules, bed setups, and inventory controls.
-- Publication readiness validator: requires valid address, at least one room type, positive unit count, and cancellation policy before a property can go live.
-
-### Phase A Enhancements (Production Parity)
-- **Super Admin Hotel Management**: Dedicated endpoints for resetting hotel admin passwords, updating admin emails, and editing primary administrator profile details (`PATCH /api/v1/admin/hotels/:id/admin-profile`).
-- **Media Upload Pipeline**: Express `multer` pipeline accepting JPEG, PNG, WebP, GIF, and AVIF up to 5MB, with static serving at `/uploads`.
-- **Luxury Room Catalog Attributes**: Expanded `RoomType` schema to match Four Seasons, Marriott, and Mews PMS standards (room tiers, view types, outdoor spaces, dual sqm/sqft dimensions, luxury bathroom specifications, bedding flexibility with cribs/rollaway beds, extra adult/child pricing, and meal plans).
-- **Activity Audit Trail**: Tenant and platform-level audit logging with queryable endpoints (`/api/v1/admin/hotels/:id/activity`).
-- **Enriched Platform Analytics**: Aggregated metrics for active/onboarding hotels, published/draft properties, and total room types.
+* **Role-Based Access Control:** Strict role segregation for `SUPER_ADMIN`, `HOTEL_ADMIN`, `HOTEL_STAFF`, and `GUEST`.
+* **Idempotent Reservations Engine:** Front-ends submit a UUID idempotency key; duplicate submissions safely return existing booking without double charges or inventory overbooking.
+* **Audit Trail Engine (`ActivityLog`):** Non-blocking, fail-safe logging of all platform and tenant mutations.
 
 ---
 
@@ -58,172 +32,174 @@ The API enforces strict **server-side tenant isolation** across all data operati
 
 | Model | Purpose | Key Attributes |
 | :--- | :--- | :--- |
-| **`User`** | System actors | `email`, `passwordHash`, `fullName`, `role`, `status` |
+| **`User`** | Actors & guests | `email`, `passwordHash`, `fullName`, `role` (`SUPER_ADMIN` \| `HOTEL_ADMIN` \| `HOTEL_STAFF` \| `GUEST`), `savedProperties`, `status` |
 | **`HotelAccount`** | Tenant boundary | `name`, `slug`, `status`, `contactEmail`, `contactPhone`, `country`, `currency`, `timezone`, `primaryAdminUserId` |
-| **`HotelMembership`** | User-to-Tenant link | `hotelAccountId`, `userId`, `role`, `status` |
-| **`Property`** | Physical hotel location | `hotelAccountId`, `name`, `slug`, `propertyType`, `status`, `address`, `coverImage`, `gallery`, `amenities` |
-| **`Policy`** | Operating rules | `propertyId`, `hotelAccountId`, `cancellationPolicy`, `cancellationDeadlineHours`, `petPolicy`, `smokingPolicy`, `childPolicy` |
-| **`RoomType`** | Sellable inventory | `propertyId`, `hotelAccountId`, `name`, `code`, `category`, `viewType`, `outdoorSpace`, `maxOccupancy`, `bedding`, `bathroom`, `roomSizeSqm`, `roomSizeSqft`, `totalUnits`, `basePricePerNight`, `pricing`, `mealPlan`, `images` |
+| **`HotelMembership`**| User-to-Tenant link | `hotelAccountId`, `userId`, `role`, `status` |
+| **`Property`** | Physical hotel | `hotelAccountId`, `name`, `slug`, `propertyType`, `status`, `address`, `coverImage`, `gallery`, `amenities`, `averageRating`, `reviewCount`, `isFeaturedOnHome`, `featuredPriority` |
+| **`RoomType`** | Sellable inventory | `propertyId`, `hotelAccountId`, `name`, `code`, `category`, `viewType`, `outdoorSpace`, `maxOccupancy`, `bedding`, `bathroom`, `roomSizeSqm`, `totalUnits`, `basePricePerNight`, `pricing`, `mealPlan` |
+| **`Availability`** | Tape chart calendar | `propertyId`, `roomTypeId`, `date`, `totalUnits`, `bookedUnits`, `blockedUnits`, `availableUnits`, `stopSell`, `closedToArrival`, `closedToDeparture` |
+| **`RatePlan`** | Dynamic pricing | `propertyId`, `roomTypeId`, `name`, `type` (`STANDARD` \| `WEEKEND` \| `EARLY_BIRD` \| `LAST_MINUTE` \| `SEASONAL`), `adjustmentType` (`PERCENTAGE_DISCOUNT` \| `PERCENTAGE_SURGE` \| `FIXED_DISCOUNT`), `validFrom`, `validTo`, `daysOfWeek`, `minNights`, `isActive` |
+| **`PromoCode`** | Discount codes | `hotelAccountId`, `propertyId`, `code`, `discountType` (`PERCENTAGE` \| `FIXED_AMOUNT`), `discountValue`, `validFrom`, `validTo`, `minSpend`, `usageLimit`, `usedCount`, `isActive` |
+| **`Booking`** | Reservations | `bookingReference` (`BK-HOTEL-YYMM-XXXX`), `propertyId`, `hotelAccountId`, `roomTypeId`, `guest`, `checkIn`, `checkOut`, `nights`, `rooms`, `pricing`, `status` (`PENDING` \| `CONFIRMED` \| `CHECKED_IN` \| `CHECKED_OUT` \| `CANCELLED`), `paymentStatus`, `source`, `idempotencyKey` |
+| **`Review`** | Verified feedback | `propertyId`, `bookingId`, `guestId`, `ratings` (6 categories: cleanliness, accuracy, checkIn, communication, location, value), `overallRating`, `title`, `comment`, `hotelReply`, `status` (`PUBLISHED` \| `HIDDEN`) |
+| **`FeaturedDestination`** | Geo discovery | `city`, `country`, `countryCode`, `subtitle`, `coverImage`, `displayOrder`, `targetCountries`, `isActive`, `isPopular` |
+| **`Policy`** | Operating rules | `propertyId`, `cancellationPolicy`, `cancellationDeadlineHours`, `petPolicy`, `smokingPolicy`, `childPolicy` |
 | **`ActivityLog`** | Audit trail | `tenantId`, `actorId`, `actorRole`, `action`, `targetType`, `targetId`, `metadata`, `createdAt` |
 
 ---
 
-## 📡 API Reference
+## 📡 Complete API Reference
 
 ### 1. Authentication (`/api/v1/auth`)
-* `POST /login` — Authenticate with email/password; returns access token + sets refresh cookie.
-* `POST /refresh` — Refresh access token via `HttpOnly` cookie.
-* `POST /logout` — Clear refresh cookie.
-* `GET  /me` — Return authenticated user profile and active hotel membership.
+* `POST /login` — Authenticate user; returns JWT token + sets `refreshToken` cookie.
+* `POST /refresh` — Refresh expired access token using HTTP-only cookie.
+* `POST /logout` — Clear session cookies.
+* `GET  /me` — Return current session, role, and active tenant profile.
 
 ### 2. Super Admin (`/api/v1/admin`) — Guarded: `SUPER_ADMIN`
-* `GET   /stats` — Platform counts (total/active/onboarding hotels, users, properties, room types, recent activity).
-* `GET   /hotels` — List all registered hotel accounts.
-* `POST  /hotels` — Onboard a new hotel and primary administrator.
-* `GET   /hotels/:id` — Get hotel details, property counts, and recent activity.
-* `PATCH /hotels/:id` — Update hotel metadata (name, contact info, region).
-* `PATCH /hotels/:id/status` — Change status (`ACTIVE`, `SUSPENDED`, `ONBOARDING`, `ARCHIVED`).
-* `PATCH /hotels/:id/admin-password` — Direct password reset for hotel administrator.
-* `PATCH /hotels/:id/admin-email` — Update hotel administrator login email.
-* `PATCH /hotels/:id/admin-profile` — Update hotel administrator full name and account status.
-* `GET   /hotels/:id/activity` — Get tenant activity audit log.
+* `GET    /stats` — Platform KPI metrics, tenant counts, room counts, and recent activity.
+* `GET    /hotels` — List all registered hotel organizations.
+* `POST   /hotels` — Onboard a new hotel tenant and primary administrator.
+* `GET    /hotels/:id` — Get hotel details, property inventory, and activity audit logs.
+* `PATCH  /hotels/:id` — Update hotel identity and regional settings.
+* `PATCH  /hotels/:id/status` — Change tenant status (`ACTIVE`, `SUSPENDED`, `ONBOARDING`, `ARCHIVED`).
+* `PATCH  /hotels/:id/admin-password` — Direct password reset for hotel administrator.
+* `PATCH  /hotels/:id/admin-email` — Update hotel administrator login email.
+* `PATCH  /hotels/:id/admin-profile` — Update administrator profile and account state.
+* `GET    /hotels/:id/activity` — Retrieve tenant activity audit trail.
+* `GET    /destinations` — List curated marketplace destinations.
+* `POST   /destinations` — Create a featured destination card.
+* `PATCH  /destinations/:id` — Update destination order, imagery, or target countries.
+* `DELETE /destinations/:id` — Remove featured destination.
+* `PATCH  /properties/:id/feature` — Spotlight property on marketplace home feed.
 
-### 3. Hotel Portal (`/api/v1/portal`) — Guarded: `HOTEL_ADMIN`, `HOTEL_STAFF`, `tenantGuard`
-* `POST   /upload` — Upload media image (JPEG/PNG/WebP, max 5MB).
+### 3. Hotel Operations Portal (`/api/v1/portal`) — Guarded: `HOTEL_ADMIN`, `HOTEL_STAFF`, `tenantGuard`
 * `GET    /amenities` — Global hotel amenities catalog.
-* `GET    /hotel/me` — Scoped hotel tenant details and inventory metrics.
+* `POST   /upload` — Upload property and room imagery (max 5MB).
+* `GET    /hotel/me` — Current hotel tenant metadata and overview metrics.
 * `PATCH  /hotel/me` — Update hotel profile (name, contact email, contact phone).
-* `POST   /account/password` — Self-service password change (requires current password).
-* `POST   /account/email` — Self-service email change (requires current password).
-* `GET    /properties` — List properties belonging to the active hotel.
-* `POST   /properties` — Create a new property (defaults to `DRAFT`).
-* `GET    /properties/:id` — Get property details with room types and policy.
-* `PATCH  /properties/:id` — Update property details and media gallery.
+* `POST   /account/password` — Change administrator password.
+* `POST   /account/email` — Change administrator email.
+* `GET    /properties` — List hotel properties.
+* `POST   /properties` — Create new property draft.
+* `GET    /properties/:id` — Retrieve property with rooms and operating policies.
+* `PATCH  /properties/:id` — Update property details and media galleries.
 * `DELETE /properties/:id` — Soft-archive property.
-* `POST   /properties/:id/publish` — Validate and publish property to marketplace.
-* `POST   /properties/:id/unpublish` — Revert property to draft status.
-* `GET    /properties/:id/policies` — Retrieve property operating policies.
-* `PUT    /properties/:id/policies` — Update operating policies.
-* `GET    /properties/:id/rooms` — List room types for property.
+* `POST   /properties/:id/publish` — Validate checklist and publish property.
+* `POST   /properties/:id/unpublish` — Revert property to draft.
+* `GET    /properties/:id/policies` — Retrieve cancellation and house rules.
+* `PUT    /properties/:id/policies` — Update property operating policies.
+* `GET    /properties/:id/rooms` — List room catalog for property.
 * `POST   /properties/:id/rooms` — Create luxury room type.
-* `PATCH  /rooms/:roomId` — Update room type attributes.
+* `PATCH  /rooms/:roomId` — Update room type specifications and pricing.
 * `DELETE /rooms/:roomId` — Soft-deactivate room type.
+* `GET    /availability/:propertyId` — 14-day tape chart inventory matrix.
+* `PATCH  /availability/override` — Bulk update unit blocks, stop-sells, and arrival restrictions.
+* `GET    /rate-plans` — List dynamic rate plans.
+* `POST   /rate-plans` — Create seasonal/weekend rate rule.
+* `PATCH  /rate-plans/:id` — Update rate plan.
+* `DELETE /rate-plans/:id` — Delete rate plan.
+* `GET    /promo-codes` — List promotional coupon codes.
+* `POST   /promo-codes` — Create promo code with spend thresholds and usage limits.
+* `PATCH  /promo-codes/:id` — Update promo code status.
+* `DELETE /promo-codes/:id` — Delete promo code.
+* `GET    /bookings/today` — Front-desk operations board (arrivals, departures, in-house).
+* `GET    /bookings` — Reservation ledger with search and status filters.
+* `GET    /bookings/:id` — Booking detail with guest history and voucher metrics.
+* `POST   /bookings/:id/confirm` — Transition booking `PENDING` ➔ `CONFIRMED`.
+* `POST   /bookings/:id/check-in` — Transition booking `CONFIRMED` ➔ `CHECKED_IN`.
+* `POST   /bookings/:id/check-out` — Transition booking `CHECKED_IN` ➔ `CHECKED_OUT`.
+* `POST   /bookings/:id/cancel` — Hotel cancel booking.
+* `GET    /reviews` — Property reviews with rating distributions.
+* `POST   /reviews/:reviewId/reply` — Submit public management reply to verified review.
+
+### 4. Public Marketplace (`/api/v1/marketplace`) — Public Access
+* `GET  /home-feed` — Geo-resolved destination cards, spotlight hotel banner, and popular stays.
+* `GET  /cities` — Indexed cities with live property counts for search autocomplete.
+* `GET  /properties` — Search catalog with multi-factor filters (city, dates, guests, price, rating, amenities).
+* `GET  /properties/:slug` — Full property detail, 5-photo bento box, amenities, and policies.
+* `GET  /properties/:slug/rooms` — Sellable room types with live rates for requested dates.
+* `GET  /properties/:slug/reviews` — Verified guest reviews with Airbnb 6-category ratings summary.
+* `POST /promo/validate` — Validate promo code against dates, property, and cart value.
+* `POST /check-rates` — Real-time rate calculation engine with taxes, fees, and add-ons.
+* `POST /bookings` — Create reservation with idempotency key (`201 CREATED`).
+
+### 5. Guest Accounts & Wishlist (`/api/v1/guest`) — Guarded: `GUEST`
+* `POST   /register` — Public guest account registration.
+* `GET    /bookings` — Guest reservation history.
+* `GET    /bookings/:id` — Guest booking detail and printable digital voucher.
+* `POST   /bookings/:id/cancel` — Guest cancellation adhering to property deadline policy.
+* `POST   /bookings/:bookingId/review` — Submit 6-category verified review after checkout.
+* `GET    /saved-properties` — List guest wishlist favorites.
+* `POST   /saved-properties/:propertyId` — Add property to wishlist.
+* `DELETE /saved-properties/:propertyId` — Remove property from wishlist.
 
 ---
 
-## 🧪 Automated Testing
+## 🧪 Comprehensive Automated QA Suite
 
-The backend includes comprehensive, isolated regression test suites:
+The backend includes an exhaustive, automated end-to-end QA test suite covering the entire multi-tenant system lifecycle:
 
 ```bash
-# Test Milestone A2: Onboarding & Tenant Suspension Lifecycle
-npm run test:a2
-# Result: 16 passed, 0 failed
-
-# Test Milestones A3 & A4: Properties, Policies, Rooms & Publication Validator
-npm run test:a3-a4
-# Result: 24 passed, 0 failed
-
-# Test Phase A Enhancements: Admin Profile, Password Reset, Image Upload, Audit Logs
-npm run test:enhancements
-# Result: 9 passed, 0 failed
-
-# Combined: 49/49 automated tests passing
+# Run the complete 85-step QA regression suite:
+npm run test:qa
 ```
+
+### What `npm run test:qa` Verifies:
+1. **Section 1: Authentication & RBAC:** Super Admin, Hotel Admin, and Guest token flows; invalid credential rejection; cross-role permission guards.
+2. **Section 2: Super Admin Platform Oversight:** KPI statistics, hotel onboarding, password resets, admin email updates, destination curation CRUD, and homepage property spotlighting.
+3. **Section 3: Hotel Operations Portal:** Scoped hotel profile, amenities catalog, room creation, availability tape chart calculation, rate plans, promo codes, today's operations board, and reviews ledger.
+4. **Section 4: Marketplace Discovery & Search:** Geo-targeted home feed resolution (default `PK` vs timezone `AE`), city auto-suggest, multi-filter search, property details, room availability, Airbnb 6-category reviews, promo validation, and live rate quotes.
+5. **Section 5: End-to-End Booking & Review Lifecycle:** Idempotent booking creation, status progression (`PENDING` ➔ `CONFIRMED` ➔ `CHECKED_IN` ➔ `CHECKED_OUT`), verified guest review submission, management reply publication, and guest wishlist toggle lifecycle (`POST` / `GET` / `DELETE`).
+6. **Section 6: Error Handling & Security:** 404 handling on invalid slugs, 404 on expired promos, and Zod 400 validation on malformed payloads.
+7. **Section 7: Self-Cleaning Teardown:** Ephemeral test bookings, reviews, and test users are cleanly expunged, and unit availability is automatically restored.
+
+**Result: 85 passed, 0 failed (100% passing)**
 
 ---
 
-## 🚀 Getting Started & Database Setup
+## 🚀 Getting Started
 
 ### 1. Prerequisites
 - **Node.js:** v18.0.0 or higher
-- **MongoDB:** A running MongoDB instance (local, Docker, or Atlas cloud)
+- **MongoDB:** A running MongoDB instance on `localhost:27017` or MongoDB Atlas
 
----
-
-### 2. Setting Up MongoDB Database
-Choose one of the following methods to run MongoDB:
-
-#### Option A: Docker (Fastest)
-If you have Docker installed, start a container with one command:
+### 2. Environment Setup
 ```bash
-docker run -d -p 27017:27017 --name hotel-mongo mongo:latest
+# Copy environment configuration:
+cp .env.example .env
 ```
 
-#### Option B: Local MongoDB Service
-If MongoDB Community Server is installed locally on your system:
-```bash
-# Windows (cmd / PowerShell as Administrator):
-net start MongoDB
-
-# macOS (Homebrew):
-brew services start mongodb-community
+Ensure `.env` contains:
+```env
+PORT=5000
+NODE_ENV=development
+CLIENT_URL=http://localhost:5173
+MONGO_URI=mongodb://localhost:27017/ai_hotel_agent
+JWT_ACCESS_SECRET=super_secret_access_jwt_key_2026_hotel_agent
+JWT_REFRESH_SECRET=super_secret_refresh_jwt_key_2026_hotel_agent
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
 ```
 
-#### Option C: Cloud MongoDB Atlas
-Create a free database cluster on [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) and obtain your connection URI (e.g. `mongodb+srv://<username>:<password>@cluster0.mongodb.net/ai_hotel_agent?retryWrites=true&w=majority`).
-
----
-
-### 3. Installation & Environment Setup
-
-1. Install backend dependencies:
-   ```bash
-   npm install
-   ```
-
-2. Create your `.env` configuration file from the provided template:
-   ```bash
-   # Linux / macOS / PowerShell:
-   cp .env.example .env
-
-   # Windows Command Prompt (CMD):
-   copy .env.example .env
-   ```
-
-3. Configure your `.env` variables if needed:
-   ```env
-   PORT=5000
-   NODE_ENV=development
-   CLIENT_URL=http://localhost:5173
-   MONGO_URI=mongodb://localhost:27017/ai_hotel_agent
-   JWT_ACCESS_SECRET=super_secret_access_jwt_key_2026_hotel_agent
-   JWT_REFRESH_SECRET=super_secret_refresh_jwt_key_2026_hotel_agent
-   JWT_ACCESS_EXPIRES_IN=15m
-   JWT_REFRESH_EXPIRES_IN=7d
-   ```
-   *(If using MongoDB Atlas, replace `MONGO_URI` with your Atlas connection string).*
-
----
-
-### 4. Database Seeding (`npm run seed`)
-
-Populate the database with initial collections, schema validation, and pre-configured test hotel tenants:
+### 3. Database Seeding (`npm run seed`)
+Populate the database with luxury hotels, published properties, room types, tape chart availability, rate plans, promo codes, curated destinations, sample bookings, verified reviews, and a pre-configured guest wishlist:
 
 ```bash
 npm run seed
 ```
 
-#### What the Seed Script (`src/scripts/seed.ts`) Does:
-* Cleans up any prior test records to ensure a fresh, consistent state.
-* Hashes passwords using `bcrypt` (12 salt rounds).
-* Creates the platform **Super Admin**.
-* Creates **Hotel A** (*The Grand Heritage Lahore*), its admin membership, and a published demo property.
-* Creates **Hotel B** (*Serene Oasis Resort*), its admin membership, and a published demo property for multi-tenant isolation testing.
-
-#### Default Seeded Test Credentials:
-| Role | Email | Password | Scope & Purpose |
+#### Pre-Configured Seeded Accounts:
+| Role | Email | Password | Scope & Key Features |
 | :--- | :--- | :--- | :--- |
-| **Super Admin** | `superadmin@hotelagent.com` | `Admin123!` | Platform-wide oversight, onboarding wizard, audit trails |
-| **Hotel A Admin** | `admin@heritagehotel.com` | `Heritage123!` | Primary hotel management (*The Grand Heritage Lahore*) |
-| **Hotel B Admin** | `admin@sereneresort.com` | `Oasis123!` | Secondary hotel (*Serene Oasis Resort*) for tenancy tests |
+| **Super Admin** | `superadmin@hotelagent.com` | `Admin123!` | Hotel onboarding, audit logs, marketplace curation |
+| **Hotel A Admin** | `admin@heritagehotel.com` | `Heritage123!` | *The Grand Heritage Mall Road*, Lahore (Boutique) |
+| **Hotel B Admin** | `admin@sereneresort.com` | `Oasis123!` | *Serene Oasis Beach & Spa*, Karachi (Resort) |
+| **Demo Guest** | `guest@hotelai.com` | `Guest123!` | Wishlist pre-seeded, bookings history, review author |
 
----
-
-### 5. Running the Backend Server
-
+### 4. Running the Server
 ```bash
-# Development mode with hot-reloading (tsx):
+# Development mode with hot-reloading:
 npm run dev
 
 # Production build and run:
@@ -233,5 +209,4 @@ npm start
 
 * API Endpoint: **`http://localhost:5000`**
 * Health Check: **`http://localhost:5000/api/v1/health`**
-* Static File Uploads: **`http://localhost:5000/uploads/`**
-
+* Static Uploads: **`http://localhost:5000/uploads/`**
