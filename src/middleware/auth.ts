@@ -73,3 +73,39 @@ export async function requireAuth(
     next(error);
   }
 }
+
+export async function optionalAuth(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) return next();
+
+    try {
+      const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as TokenPayload;
+      const user = await User.findById(decoded.userId).lean();
+      if (user && user.status === 'ACTIVE') {
+        req.user = {
+          id: user._id.toString(),
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+        };
+      }
+    } catch {
+      // Ignore token verification errors for optional auth
+    }
+
+    next();
+  } catch {
+    next();
+  }
+}
+

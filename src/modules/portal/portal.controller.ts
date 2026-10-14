@@ -821,10 +821,22 @@ export class PortalController {
         }
       }
 
+      const oldUnits = room.totalUnits;
       room.set(data);
       if (data.images !== undefined) room.markModified('images');
       if (data.amenities !== undefined) room.markModified('amenities');
       await room.save();
+
+      // Synchronize future Availability documents if totalUnits changed
+      if (data.totalUnits !== undefined && data.totalUnits !== oldUnits) {
+        await Availability.updateMany(
+          {
+            roomTypeId: room._id,
+            date: { $gte: normalizeDate(new Date()) },
+          },
+          { $set: { totalUnits: data.totalUnits } }
+        );
+      }
 
       await logActivity({
         tenantId: req.hotelAccountId,
@@ -1525,11 +1537,23 @@ export class PortalController {
       const { id } = req.params;
       const query: any = { _id: id };
       if (req.user?.role !== 'SUPER_ADMIN') query.hotelAccountId = req.hotelAccountId;
-
       const booking = await Booking.findOne(query);
       if (!booking) throw new AppError('Booking not found', 404, 'BOOKING_NOT_FOUND');
 
+      // Early check-out: if checking out before scheduled checkOut date, release unused nights
+      const nowNormalized = normalizeDate(new Date());
+      const scheduledCheckOut = normalizeDate(booking.checkOut);
+      if (nowNormalized < scheduledCheckOut) {
+        await releaseRooms({
+          roomTypeId: booking.roomTypeId,
+          checkIn: nowNormalized,
+          checkOut: scheduledCheckOut,
+          rooms: booking.rooms,
+        });
+      }
+
       booking.status = 'CHECKED_OUT';
+      booking.actualCheckOut = new Date();
       await booking.save();
 
       await logActivity({
@@ -1681,10 +1705,16 @@ export class PortalController {
       const { propertyId } = req.params;
       const { startDate, endDate } = req.query as Record<string, string>;
 
+      const property = await Property.findById(propertyId).lean();
+      if (!property) throw new AppError('Property not found', 404, 'PROPERTY_NOT_FOUND');
+      if (req.user?.role !== 'SUPER_ADMIN' && property.hotelAccountId.toString() !== req.hotelAccountId?.toString()) {
+        throw new AppError('Cross-tenant access violation', 403, 'CROSS_TENANT_ACCESS_DENIED');
+      }
+
       const start = startDate ? normalizeDate(startDate) : normalizeDate(new Date());
       const end = endDate ? normalizeDate(endDate) : new Date(start.getTime() + 30 * 86400000);
 
-      const roomTypes = await RoomType.find({ propertyId, isActive: true }).lean();
+      const roomTypes = await RoomType.find({ propertyId: property._id, isActive: true }).lean();
       const roomTypeIds = roomTypes.map((r) => r._id);
 
       const avails = await Availability.find({
@@ -1772,8 +1802,14 @@ export class PortalController {
         throw new AppError('Dates array required', 400, 'INVALID_INPUT');
       }
 
-      const roomType = await RoomType.findById(roomTypeId);
-      if (!roomType) throw new AppError('Room type not found', 404, 'ROOM_TYPE_NOT_FOUND');
+      const property = await Property.findById(propertyId).lean();
+      if (!property) throw new AppError('Property not found', 404, 'PROPERTY_NOT_FOUND');
+      if (req.user?.role !== 'SUPER_ADMIN' && property.hotelAccountId.toString() !== req.hotelAccountId?.toString()) {
+        throw new AppError('Cross-tenant access violation', 403, 'CROSS_TENANT_ACCESS_DENIED');
+      }
+
+      const roomType = await RoomType.findOne({ _id: roomTypeId, propertyId: property._id });
+      if (!roomType) throw new AppError('Room type not found for this property', 404, 'ROOM_TYPE_NOT_FOUND');
 
       const operations: any[] = dates.map((item) => {
         const d = normalizeDate(item.date);
@@ -1790,7 +1826,7 @@ export class PortalController {
               $set: setFields,
               $setOnInsert: {
                 propertyId: new Types.ObjectId(String(propertyId)),
-                hotelAccountId: req.hotelAccountId,
+                hotelAccountId: property.hotelAccountId,
                 totalUnits: roomType.totalUnits,
                 bookedUnits: 0,
               },

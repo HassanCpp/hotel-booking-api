@@ -88,6 +88,7 @@ export interface IBooking extends Document {
 
   hasReview: boolean;
   reviewId?: Types.ObjectId;
+  actualCheckOut?: Date;
 
   createdAt: Date;
   updatedAt: Date;
@@ -224,6 +225,7 @@ const BookingSchema = new Schema<IBooking>(
       reason: { type: String, trim: true },
       refundAmount: { type: Number, default: 0 },
     },
+    actualCheckOut: { type: Date },
     idempotencyKey: {
       type: String,
       sparse: true,

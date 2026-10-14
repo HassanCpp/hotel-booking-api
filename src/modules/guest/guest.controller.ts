@@ -7,6 +7,8 @@ import { User } from '../../models/User';
 import { Booking } from '../../models/Booking';
 import { Review } from '../../models/Review';
 import { Property } from '../../models/Property';
+import { Policy } from '../../models/Policy';
+import { PromoCode } from '../../models/PromoCode';
 import { AppError } from '../../middleware/errorHandler';
 import { env } from '../../config/env';
 import { releaseRooms } from '../../utils/availability';
@@ -166,12 +168,33 @@ export class GuestController {
         rooms: booking.rooms,
       });
 
+      // Calculate refund according to property policy
+      const policy = await Policy.findOne({ propertyId: booking.propertyId }).lean();
+      let refundAmount = 0;
+      const deadlineHours = policy?.cancellationDeadlineHours ?? 48;
+      const checkInTime = new Date(booking.checkIn).getTime();
+      const hoursUntilCheckIn = (checkInTime - Date.now()) / (1000 * 60 * 60);
+
+      if (hoursUntilCheckIn >= deadlineHours) {
+        refundAmount = booking.paymentStatus === 'PAID' ? booking.pricing.totalAmount : 0;
+      } else {
+        refundAmount = 0;
+      }
+
+      // Restore promo code usage if applied
+      if (booking.pricing?.promoCode) {
+        await PromoCode.findOneAndUpdate(
+          { hotelAccountId: booking.hotelAccountId, code: booking.pricing.promoCode, currentUses: { $gt: 0 } },
+          { $inc: { currentUses: -1 } }
+        );
+      }
+
       booking.status = 'CANCELLED';
       booking.cancellation = {
         cancelledAt: new Date(),
         cancelledBy: 'GUEST',
         reason: reason || 'Cancelled by guest',
-        refundAmount: 0,
+        refundAmount,
       };
 
       await booking.save();
@@ -342,9 +365,12 @@ export class GuestController {
         })
         .lean();
 
+      // Filter out null elements from unpublished/deleted properties
+      const activeSaved = (user?.savedProperties || []).filter(Boolean);
+
       res.status(200).json({
         success: true,
-        data: { savedProperties: user?.savedProperties || [] },
+        data: { savedProperties: activeSaved },
       });
     } catch (error) {
       next(error);

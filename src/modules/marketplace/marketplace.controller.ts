@@ -2,11 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import mongoose, { Types } from 'mongoose';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
+import { AuthRequest } from '../../types/auth.types';
 import { Property } from '../../models/Property';
 import { RoomType } from '../../models/RoomType';
 import { HotelAccount } from '../../models/HotelAccount';
 import { Policy } from '../../models/Policy';
 import { Booking } from '../../models/Booking';
+import { Availability } from '../../models/Availability';
 import { Review } from '../../models/Review';
 import { User } from '../../models/User';
 import { PromoCode } from '../../models/PromoCode';
@@ -18,6 +20,7 @@ import { sendBookingConfirmationEmail } from '../../utils/email';
 import { logActivity } from '../../utils/logActivity';
 import { FeaturedDestination } from '../../models/FeaturedDestination';
 import { resolveVisitorLocation } from '../../utils/geo';
+import { expireAbandonedPendingBookings } from '../../utils/bookingExpiry';
 
 export class MarketplaceController {
   /**
@@ -118,22 +121,56 @@ export class MarketplaceController {
             .select('basePricePerNight totalUnits name category')
             .lean();
 
-          const startingPrice = rooms.length > 0 ? rooms[0].basePricePerNight : 0;
+          let availableRoomTypesCount = 0;
+          let lowestAvailableRate = Infinity;
+
+          if (checkIn && checkOut) {
+            for (const r of rooms) {
+              const avail = await checkAvailability({
+                roomTypeId: r._id,
+                propertyId: prop._id,
+                checkIn,
+                checkOut,
+                requestedRooms: 1,
+              });
+              if (avail.isAvailable && avail.minAvailableUnits > 0) {
+                availableRoomTypesCount++;
+                if (r.basePricePerNight < lowestAvailableRate) {
+                  lowestAvailableRate = r.basePricePerNight;
+                }
+              }
+            }
+          } else {
+            availableRoomTypesCount = rooms.length;
+            lowestAvailableRate = rooms.length > 0 ? rooms[0].basePricePerNight : 0;
+          }
+
+          const startingPrice = isFinite(lowestAvailableRate)
+            ? lowestAvailableRate
+            : rooms.length > 0
+            ? rooms[0].basePricePerNight
+            : 0;
 
           return {
             ...prop,
             startingPrice,
-            availableRoomTypesCount: rooms.length,
+            availableRoomTypesCount,
+            isAvailableForDates: checkIn && checkOut ? availableRoomTypesCount > 0 : true,
           };
         })
       );
 
-      // Filter by min/max price if specified
+      // Filter by availability on requested dates
       let finalResults = enrichedProperties;
+      if (checkIn && checkOut) {
+        finalResults = finalResults.filter((p) => p.isAvailableForDates);
+      }
+
+      // Filter by min/max price if specified
       if (minPrice || maxPrice) {
         const min = minPrice ? parseFloat(minPrice) : 0;
         const max = maxPrice ? parseFloat(maxPrice) : Infinity;
-        finalResults = enrichedProperties.filter(
+        finalResults = finalResults.filter(
           (p) => p.startingPrice >= min && p.startingPrice <= max
         );
       }
@@ -272,6 +309,133 @@ export class MarketplaceController {
         data: {
           rooms: results,
           roomTypes: results,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get availability calendar for a property and room type across a date range.
+   * Returns list of unavailable/booked dates and active reservation ranges.
+   */
+  static async getPropertyAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const slugStr = String(req.params.slug).toLowerCase();
+      const { roomTypeId, startDate, days = '90' } = req.query as Record<string, string>;
+
+      const property = await Property.findOne({ slug: slugStr, status: 'PUBLISHED' }).lean();
+      if (!property) {
+        throw new AppError('Property not found', 404, 'PROPERTY_NOT_FOUND');
+      }
+
+      // Find room type
+      let targetRoomType: any = null;
+      if (roomTypeId) {
+        targetRoomType = await RoomType.findOne({ _id: roomTypeId, propertyId: property._id, isActive: true }).lean();
+      }
+      if (!targetRoomType) {
+        targetRoomType = await RoomType.findOne({ propertyId: property._id, isActive: true }).sort({ basePricePerNight: 1 }).lean();
+      }
+
+      if (!targetRoomType) {
+        res.status(200).json({
+          success: true,
+          data: {
+            unavailableDates: [],
+            bookedRanges: [],
+            dateDetails: {},
+          },
+        });
+        return;
+      }
+
+      const numDays = Math.min(180, Math.max(7, parseInt(days, 10) || 90));
+      const start = startDate ? normalizeDate(startDate) : normalizeDate(new Date());
+      const end = new Date(start.getTime() + numDays * 86400000);
+
+      // 1. Fetch Availability documents for target roomType in date range
+      const avails = await Availability.find({
+        roomTypeId: targetRoomType._id,
+        date: { $gte: start, $lt: end },
+      }).lean();
+
+      const availMap = new Map<string, any>();
+      for (const a of avails) {
+        const key = normalizeDate(a.date).toISOString().split('T')[0];
+        availMap.set(key, a);
+      }
+
+      // 2. Fetch active bookings in date range for this roomType
+      const activeBookings = await Booking.find({
+        roomTypeId: targetRoomType._id,
+        status: { $in: ['PENDING', 'CONFIRMED', 'CHECKED_IN'] },
+        checkIn: { $lt: end },
+        checkOut: { $gt: start },
+      }).select('checkIn checkOut guest.fullName status').lean();
+
+      const unavailableDatesSet = new Set<string>();
+      const dateDetails: Record<string, any> = {};
+
+      for (let i = 0; i < numDays; i++) {
+        const curr = new Date(start.getTime() + i * 86400000);
+        const dateStr = curr.toISOString().split('T')[0];
+        const rec = availMap.get(dateStr);
+
+        let totalUnits = targetRoomType.totalUnits;
+        let bookedUnits = 0;
+        let blockedUnits = 0;
+        let isClosed = false;
+
+        if (rec) {
+          totalUnits = rec.totalUnits ?? targetRoomType.totalUnits;
+          bookedUnits = rec.bookedUnits ?? 0;
+          blockedUnits = rec.blockedUnits ?? 0;
+          isClosed = rec.isClosed ?? false;
+        } else {
+          // Calculate from active bookings if Availability document has not been explicitly created yet
+          for (const b of activeBookings) {
+            const bCheckIn = normalizeDate(b.checkIn);
+            const bCheckOut = normalizeDate(b.checkOut);
+            if (curr >= bCheckIn && curr < bCheckOut) {
+              bookedUnits += 1;
+            }
+          }
+        }
+
+        const availableUnits = Math.max(0, totalUnits - bookedUnits - blockedUnits);
+        const isUnavailable = isClosed || availableUnits < 1;
+
+        if (isUnavailable) {
+          unavailableDatesSet.add(dateStr);
+        }
+
+        dateDetails[dateStr] = {
+          totalUnits,
+          bookedUnits,
+          availableUnits,
+          isAvailable: !isUnavailable,
+        };
+      }
+
+      const bookedRanges = activeBookings.map((b) => ({
+        checkIn: normalizeDate(b.checkIn).toISOString().split('T')[0],
+        checkOut: normalizeDate(b.checkOut).toISOString().split('T')[0],
+        status: b.status,
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: {
+          propertyId: property._id,
+          propertyName: property.name,
+          roomTypeId: targetRoomType._id,
+          roomName: targetRoomType.name,
+          totalUnits: targetRoomType.totalUnits,
+          unavailableDates: Array.from(unavailableDatesSet).sort(),
+          bookedRanges,
+          dateDetails,
         },
       });
     } catch (error) {
@@ -485,12 +649,19 @@ export class MarketplaceController {
   /**
    * Create a new marketplace booking (Guest Checkout).
    */
-  static async createBooking(req: Request, res: Response, next: NextFunction): Promise<void> {
+  static async createBooking(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     const idempotencyKey = req.headers['x-idempotency-key'] as string;
 
-    // 1. Check idempotency for agent safe retries
+    // Sweep expired pending bookings before proceeding
+    expireAbandonedPendingBookings().catch(() => {});
+
+    // 1. Check idempotency for agent safe retries (scoped to email to prevent cross-customer leak)
     if (idempotencyKey) {
-      const existingBooking = await Booking.findOne({ idempotencyKey }).lean();
+      const emailLower = (req.body?.guest?.email || '').toLowerCase().trim();
+      const existingBooking = await Booking.findOne({
+        idempotencyKey,
+        ...(emailLower ? { 'guest.email': emailLower } : {}),
+      }).lean();
       if (existingBooking) {
         res.status(200).json({
           success: true,
@@ -540,6 +711,22 @@ export class MarketplaceController {
 
       const body = bookingSchema.parse(req.body);
 
+      // Verify stay dates logic
+      const checkInDate = normalizeDate(body.checkIn);
+      const checkOutDate = normalizeDate(body.checkOut);
+      const today = normalizeDate(new Date());
+
+      if (checkInDate < today) {
+        throw new AppError('Check-in date cannot be in the past', 400, 'INVALID_DATES');
+      }
+      if (checkOutDate <= checkInDate) {
+        throw new AppError('Check-out date must be strictly after check-in date', 400, 'INVALID_DATES');
+      }
+      const nights = Math.round((checkOutDate.getTime() - checkInDate.getTime()) / 86400000);
+      if (nights < 1) {
+        throw new AppError('A minimum stay of 1 night is required', 400, 'INVALID_DATES');
+      }
+
       // Verify property and hotel status
       const property = await Property.findById(body.propertyId);
       if (!property || property.status !== 'PUBLISHED') {
@@ -554,6 +741,20 @@ export class MarketplaceController {
       const roomType = await RoomType.findById(body.roomTypeId);
       if (!roomType || !roomType.isActive) {
         throw new AppError('Room type is not available', 400, 'ROOM_TYPE_INACTIVE');
+      }
+
+      // Enforce room capacity limits
+      const maxAdults = (roomType.maxOccupancy?.adults || 2) * (body.rooms || 1);
+      const maxChildren = (roomType.maxOccupancy?.children || 0) * (body.rooms || 1);
+      const totalCapacity = maxAdults + maxChildren;
+      const requestedGuests = (body.adults || 1) + (body.children || 0);
+
+      if (body.adults > maxAdults || requestedGuests > totalCapacity) {
+        throw new AppError(
+          `Requested guests (${body.adults} adults, ${body.children} children) exceed maximum capacity of ${totalCapacity} guests for ${body.rooms} room(s)`,
+          400,
+          'MAX_OCCUPANCY_EXCEEDED'
+        );
       }
 
       // 2. Atomically reserve rooms
@@ -585,16 +786,24 @@ export class MarketplaceController {
         promoCode: body.promoCode,
       });
 
+      // Strict promo code check: do not silently drop requested vouchers
+      if (body.promoCode && body.promoCode.trim()) {
+        const requestedCode = body.promoCode.trim().toUpperCase();
+        if (!pricing.promoCode || pricing.promoCode !== requestedCode || (pricing.discount || 0) <= 0) {
+          throw new AppError(
+            `Promo code '${requestedCode}' is invalid, expired, or does not meet minimum stay criteria`,
+            400,
+            'INVALID_PROMO_CODE'
+          );
+        }
+      }
+
       // 4. Generate reference
       const bookingReference = await generateBookingReference(hotel.slug);
 
-      const checkInDate = normalizeDate(body.checkIn);
-      const checkOutDate = normalizeDate(body.checkOut);
-      const nights = Math.max(1, Math.round((checkOutDate.getTime() - checkInDate.getTime()) / 86400000));
-
-      // 5. Create guest account if requested
-      let guestUserId: Types.ObjectId | undefined = undefined;
-      if (body.createAccount && body.password) {
+      // 5. Resolve guest user ID (from auth header or existing account)
+      let guestUserId: Types.ObjectId | undefined = req.user?.id ? new Types.ObjectId(req.user.id) : undefined;
+      if (!guestUserId && body.createAccount && body.password) {
         const existingUser = await User.findOne({ email: body.guest.email.toLowerCase() });
         if (!existingUser) {
           const passwordHash = await bcrypt.hash(body.password, 12);
@@ -610,6 +819,11 @@ export class MarketplaceController {
           });
           guestUserId = newUser._id;
         } else {
+          guestUserId = existingUser._id;
+        }
+      } else if (!guestUserId && body.guest.email) {
+        const existingUser = await User.findOne({ email: body.guest.email.toLowerCase() });
+        if (existingUser) {
           guestUserId = existingUser._id;
         }
       }

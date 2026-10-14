@@ -116,23 +116,45 @@ The **Hotel Booking API** is an enterprise-grade hospitality and marketplace eng
 ### 4. Public Marketplace (`/api/v1/marketplace`) — Public Access
 * `GET  /home-feed` — Geo-resolved destination cards, spotlight hotel banner, and popular stays.
 * `GET  /cities` — Indexed cities with live property counts for search autocomplete.
-* `GET  /properties` — Search catalog with multi-factor filters (city, dates, guests, price, rating, amenities).
+* `GET  /properties` — Search catalog with multi-factor filters (city, dates, guests, price, rating, amenities). Excludes hotels with zero available units on requested dates.
 * `GET  /properties/:slug` — Full property detail, 5-photo bento box, amenities, and policies.
-* `GET  /properties/:slug/rooms` — Sellable room types with live rates for requested dates.
+* `GET  /properties/:slug/rooms` — Sellable room types with live rates for requested dates and occupancy.
+* `GET  /properties/:slug/availability` — Real-time availability calendar endpoint returning booked date ranges, unavailable nights, and unit allocations.
 * `GET  /properties/:slug/reviews` — Verified guest reviews with Airbnb 6-category ratings summary.
 * `POST /promo/validate` — Validate promo code against dates, property, and cart value.
 * `POST /check-rates` — Real-time rate calculation engine with taxes, fees, and add-ons.
-* `POST /bookings` — Create reservation with idempotency key (`201 CREATED`).
+* `POST /bookings` — Create reservation with idempotency key (`201 CREATED`). Supports optional JWT auth to link booking to guest profile.
 
 ### 5. Guest Accounts & Wishlist (`/api/v1/guest`) — Guarded: `GUEST`
 * `POST   /register` — Public guest account registration.
 * `GET    /bookings` — Guest reservation history.
 * `GET    /bookings/:id` — Guest booking detail and printable digital voucher.
-* `POST   /bookings/:id/cancel` — Guest cancellation adhering to property deadline policy.
+* `POST   /bookings/:id/cancel` — Policy-compliant guest cancellation with automatic refund calculation and voucher restoral.
 * `POST   /bookings/:bookingId/review` — Submit 6-category verified review after checkout.
-* `GET    /saved-properties` — List guest wishlist favorites.
+* `GET    /saved-properties` — List guest wishlist favorites (null-safe against unpublished hotels).
 * `POST   /saved-properties/:propertyId` — Add property to wishlist.
 * `DELETE /saved-properties/:propertyId` — Remove property from wishlist.
+
+---
+
+## 🛡 Real-Time Inventory & Booking Lifecycle Engine
+
+1. **Atomic Inventory Reservation with Rollback Protection:**
+   * Atomically locks units night-by-night (`$inc: { bookedUnits: rooms }`) subject to `totalUnits`.
+   * If any night fails in a multi-night reservation, a compensating rollback loop automatically reverses previously incremented nights, preventing ghost locks on standalone MongoDB instances.
+2. **Availability Calendar Endpoint (`GET /properties/:slug/availability`):**
+   * Cross-references `Availability` records and active `Booking` entries (`PENDING`, `CONFIRMED`, `CHECKED_IN`).
+   * Feeds the 2-month side-by-side interactive calendar widget with booked date spans and unavailable dates.
+3. **Automated Expiration Sweeper (`bookingExpiry.ts`):**
+   * Automatically sweeps and cancels abandoned `PENDING` bookings older than 24 hours (or past check-in), releasing held units back to the marketplace.
+4. **Multi-Tenant Tape Chart & Override Isolation:**
+   * Strict tenant boundary checks prevent hotel admins from viewing or overriding other hotels' availability matrices or rate plans.
+5. **Early Check-Out Unused Nights Release:**
+   * Checking out before the scheduled departure date frees remaining unused nights (`[today, scheduledCheckOut)`), immediately returning inventory to the market.
+6. **Strict Pricing & Occupancy Guards:**
+   * Rejects bookings where guest count exceeds room capacity (`MAX_OCCUPANCY_EXCEEDED`).
+   * Enforces date order (`checkOut > checkIn`) and minimum stays.
+   * Enforces strict promo code validation (rejects invalid/expired codes instead of silently dropping discounts).
 
 ---
 

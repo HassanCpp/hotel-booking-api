@@ -170,6 +170,19 @@ export async function reserveRooms(params: {
     );
 
     if (!updateResult) {
+      // Compensating rollback for previously incremented nights in this loop
+      for (let j = 0; j < i; j++) {
+        const rollbackDate = new Date(checkIn.getTime() + j * 24 * 60 * 60 * 1000);
+        try {
+          await Availability.findOneAndUpdate(
+            { roomTypeId: params.roomTypeId, date: rollbackDate },
+            { $inc: { bookedUnits: -rooms } },
+            { session: params.session }
+          );
+        } catch (rollbackErr) {
+          console.error('[reserveRooms Rollback Error]', rollbackErr);
+        }
+      }
       const dateStr = currentDate.toISOString().split('T')[0];
       throw new Error(`Insufficient room availability for date ${dateStr}`);
     }
@@ -196,15 +209,14 @@ export async function releaseRooms(params: {
   for (let i = 0; i < nights; i++) {
     const currentDate = new Date(checkIn.getTime() + i * 24 * 60 * 60 * 1000);
 
-    await Availability.findOneAndUpdate(
-      {
-        roomTypeId: params.roomTypeId,
-        date: currentDate,
-      },
-      {
-        $inc: { bookedUnits: -rooms },
-      },
-      { session: params.session }
-    );
+    const doc = await Availability.findOne({
+      roomTypeId: params.roomTypeId,
+      date: currentDate,
+    }).session(params.session || null);
+
+    if (doc) {
+      doc.bookedUnits = Math.max(0, doc.bookedUnits - rooms);
+      await doc.save({ session: params.session });
+    }
   }
 }

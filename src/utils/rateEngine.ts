@@ -15,8 +15,18 @@ export interface ResolveRateResult {
  * Normalizes Date to midnight UTC for uniform calendar calculations
  */
 export function normalizeDate(date: Date | string): Date {
+  if (typeof date === 'string') {
+    const clean = date.split('T')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      const [y, m, d] = parts.map(Number);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+      }
+    }
+  }
   const d = new Date(date);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0));
 }
 
 /**
