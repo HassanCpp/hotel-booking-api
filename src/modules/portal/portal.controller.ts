@@ -48,7 +48,7 @@ async function generateUniquePropertySlug(name: string): Promise<string> {
 const propertyBaseFields = {
   name: z.string().min(2, 'Property name must be at least 2 characters'),
   description: z.string(),
-  propertyType: z.enum(['HOTEL', 'RESORT', 'BOUTIQUE', 'APARTMENT']),
+  propertyType: z.enum(['HOTEL', 'RESORT', 'BOUTIQUE', 'APARTMENT', 'VILLA', 'LODGE', 'GLAMPING']),
   address: z.object({
     street: z.string().optional(),
     city: z.string().min(1, 'City is required'),
@@ -77,7 +77,7 @@ const propertyBaseFields = {
 const createPropertySchema = z.object({
   ...propertyBaseFields,
   description: z.string().default(''),
-  propertyType: z.enum(['HOTEL', 'RESORT', 'BOUTIQUE', 'APARTMENT']).default('HOTEL'),
+  propertyType: z.enum(['HOTEL', 'RESORT', 'BOUTIQUE', 'APARTMENT', 'VILLA', 'LODGE', 'GLAMPING']).default('HOTEL'),
   address: z.object({
     street: z.string().optional(),
     city: z.string().min(1, 'City is required'),

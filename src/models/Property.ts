@@ -1,7 +1,7 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
 export type PropertyStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-export type PropertyType = 'HOTEL' | 'RESORT' | 'BOUTIQUE' | 'APARTMENT';
+export type PropertyType = 'HOTEL' | 'RESORT' | 'BOUTIQUE' | 'APARTMENT' | 'VILLA' | 'LODGE' | 'GLAMPING';
 
 export interface IPropertyAddress {
   street?: string;
@@ -84,7 +84,7 @@ const PropertySchema = new Schema<IProperty>(
     },
     propertyType: {
       type: String,
-      enum: ['HOTEL', 'RESORT', 'BOUTIQUE', 'APARTMENT'],
+      enum: ['HOTEL', 'RESORT', 'BOUTIQUE', 'APARTMENT', 'VILLA', 'LODGE', 'GLAMPING'],
       default: 'HOTEL',
       index: true,
     },

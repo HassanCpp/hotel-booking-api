@@ -28,6 +28,9 @@ const COUNTRY_NAMES: Record<string, string> = {
   TH: 'Thailand',
   SG: 'Singapore',
   AU: 'Australia',
+  JP: 'Japan',
+  ID: 'Indonesia',
+  GR: 'Greece',
 };
 
 // Common timezones to ISO 2-letter Country Codes mapping
@@ -53,6 +56,10 @@ const TIMEZONE_TO_COUNTRY: Record<string, { code: string; name: string }> = {
   'Europe/Madrid': { code: 'ES', name: 'Spain' },
   'Europe/Zurich': { code: 'CH', name: 'Switzerland' },
   'Europe/Istanbul': { code: 'TR', name: 'Turkey' },
+  'Asia/Tokyo': { code: 'JP', name: 'Japan' },
+  'Asia/Makassar': { code: 'ID', name: 'Indonesia' },
+  'Asia/Jakarta': { code: 'ID', name: 'Indonesia' },
+  'Europe/Athens': { code: 'GR', name: 'Greece' },
   'Asia/Kuala_Lumpur': { code: 'MY', name: 'Malaysia' },
   'Asia/Bangkok': { code: 'TH', name: 'Thailand' },
   'Asia/Singapore': { code: 'SG', name: 'Singapore' },

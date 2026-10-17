@@ -204,20 +204,57 @@ JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 ```
 
-### 3. Database Seeding (`npm run seed`)
-Populate the database with luxury hotels, published properties, room types, tape chart availability, rate plans, promo codes, curated destinations, sample bookings, verified reviews, and a pre-configured guest wishlist:
+### 3. Database Seeding
+
+#### Option A: Base Demonstration Seed (`npm run seed`)
+Populate the database with core hotels, published properties, tape chart availability, rate plans, promo codes, curated destinations, sample bookings, verified reviews, and a pre-configured guest wishlist:
 
 ```bash
 npm run seed
 ```
 
+#### Option B: Worldwide Expanded Catalog (`npm run seed:expanded`)
+Flood the system with 15+ premier luxury properties across Pakistan (Hunza, Skardu, Islamabad, Murree, Gwadar, Lahore, Peshawar) and top global destinations (Dubai, Al Ula, Riyadh, Istanbul, London, Paris, New York, Bali, Tokyo). Each property includes verified high-res photography, custom room categories, house policies, 60-day availability tape charts, and isolated admin credentials:
+
+```bash
+npm run seed:expanded
+```
+
 #### Pre-Configured Seeded Accounts:
+
+##### Platform & Guest Accounts
 | Role | Email | Password | Scope & Key Features |
 | :--- | :--- | :--- | :--- |
 | **Super Admin** | `superadmin@hotelagent.com` | `Admin123!` | Hotel onboarding, audit logs, marketplace curation |
-| **Hotel A Admin** | `admin@heritagehotel.com` | `Heritage123!` | *The Grand Heritage Mall Road*, Lahore (Boutique) |
-| **Hotel B Admin** | `admin@sereneresort.com` | `Oasis123!` | *Serene Oasis Beach & Spa*, Karachi (Resort) |
 | **Demo Guest** | `guest@hotelai.com` | `Guest123!` | Wishlist pre-seeded, bookings history, review author |
+| **Test Guest** | `bilal@example.com` | `Bilal123!` | Active reservation holder on Milli Dorms |
+| **Test Guest** | `ayesha@guest.com` | `Ayesha123!` | Verified review author on The Grand Heritage |
+
+##### Pakistan Hotel Admin Accounts
+| Property Name | Property Type | City, Country | Admin Email | Password |
+| :--- | :--- | :--- | :--- | :--- |
+| **The Grand Heritage Mall Road** | `BOUTIQUE` | Lahore, Pakistan | `admin@heritagehotel.com` | `Heritage123!` |
+| **Serene Oasis Beach & Spa** | `RESORT` | Karachi, Pakistan | `admin@sereneresort.com` | `Oasis123!` |
+| **Milli Dorms** | `APARTMENT` | Lahore, Pakistan | `hamza@millidorms.com` | `Hamza123!` |
+| **Hunza Serai Mountain Glamping** | `GLAMPING` | Hunza, Pakistan | `admin@hunzaserai.com` | `Hunza123!` |
+| **The Margalla Ridge Boutique & Spa** | `BOUTIQUE` | Islamabad, Pakistan | `admin@margallaridge.com` | `Margalla123!` |
+| **Shangrila Pines Heritage Villa** | `VILLA` | Murree, Pakistan | `admin@shangrilapines.com` | `Pines123!` |
+| **Skardu Celestial Stargazing Resort** | `RESORT` | Skardu, Pakistan | `admin@skarduresort.com` | `Skardu123!` |
+| **Gwadar Pearl Oceanfront Resort** | `RESORT` | Gwadar, Pakistan | `admin@gwadarpearl.com` | `Gwadar123!` |
+| **Gulberg Executive Luxury Apartments** | `APARTMENT` | Lahore, Pakistan | `admin@gulbergsuites.com` | `Gulberg123!` |
+| **Qissa Khwani Heritage Haveli** | `BOUTIQUE` | Peshawar, Pakistan | `admin@peshawarhaveli.com` | `Peshawar123!` |
+
+##### Global & International Hotel Admin Accounts
+| Property Name | Property Type | City, Country | Admin Email | Password |
+| :--- | :--- | :--- | :--- | :--- |
+| **Burj Vista Sky Penthouse** | `APARTMENT` | Dubai, United Arab Emirates | `admin@burjvista.ae` | `Dubai123!` |
+| **Al Ula Desert Rose Canyon Oasis** | `RESORT` | Al Ula, Saudi Arabia | `admin@alulaoasis.sa` | `Alula123!` |
+| **Bosphorus Waterfront Ottoman Palace** | `HOTEL` | Istanbul, Turkey | `admin@bosphoruspalace.com` | `Istanbul123!` |
+| **Mayfair Royal Georgian Residence** | `BOUTIQUE` | London, United Kingdom | `admin@mayfairresidence.co.uk` | `London123!` |
+| **Le Marais Haussmann Luxury Loft** | `APARTMENT` | Paris, France | `admin@lemaraisloft.fr` | `Paris123!` |
+| **Tribeca Designer Penthouse** | `APARTMENT` | New York, United States | `admin@tribecapenthouse.com` | `Newyork123!` |
+| **Ubud Sacred Valley Rainforest Villa** | `VILLA` | Bali, Indonesia | `admin@ubudrainforest.com` | `Bali123!` |
+| **Shinjuku Zen Modern Ryokan & Onsen** | `BOUTIQUE` | Tokyo, Japan | `admin@zenryokan.jp` | `Tokyo123!` |
 
 ### 4. Running the Server
 ```bash
