@@ -14,13 +14,16 @@
     "test:a3-a4": "tsx src/scripts/test-a3-a4.ts",
     "test:enhancements": "tsx src/scripts/test-enhancements.ts",
     "test:marketplace": "tsx src/scripts/test-marketplace-backend.ts",
-    "test:qa": "tsx src/scripts/test-full-system-qa.ts"
+    "test:qa": "tsx src/scripts/test-full-system-qa.ts",
+    "test:ai": "tsx src/scripts/test-ai-integrations.ts",
+    "test:rag": "tsx src/scripts/test-rag-pipeline.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@pinecone-database/pinecone": "^9.1.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
@@ -30,6 +33,8 @@
     "mongoose": "^9.10.0",
     "multer": "^2.4.0",
     "nodemailer": "^10.0.13",
+    "openai": "^7.47.0",
+    "pdf-parse": "^2.4.5",
     "zod": "^4.6.2"
   },
   "devDependencies": {
@@ -41,6 +46,7 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^22.20.2",
     "@types/nodemailer": "^8.0.2",
+    "@types/pdf-parse": "^1.1.5",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { MarketplaceController } from './marketplace.controller';
+import { MarketplaceKnowledgeController } from './marketplace.knowledge.controller';
 import { optionalAuth } from '../../middleware/auth';
 
 const router = Router();
@@ -20,5 +21,8 @@ router.post('/validate-promo', MarketplaceController.validatePromo);
 
 // Public booking creation (with optional guest auth decoding)
 router.post('/bookings', optionalAuth, MarketplaceController.createBooking);
+
+// AI Property Concierge RAG Inquiry (Public with optional guest auth)
+router.post('/properties/:propertyId/ask', optionalAuth, MarketplaceKnowledgeController.askPropertyConcierge);
 
 export const marketplaceRoutes = router;

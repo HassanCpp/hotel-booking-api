@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { PortalController } from './portal.controller';
+import { PortalKnowledgeController } from './portal.knowledge.controller';
 import { requireAuth } from '../../middleware/auth';
 import { requireRole } from '../../middleware/roleGuard';
 import { tenantGuard } from '../../middleware/tenantGuard';
 import { upload } from '../../utils/upload';
+import { knowledgeUpload } from '../../utils/knowledgeUpload';
 
 const router = Router();
 
@@ -81,5 +83,12 @@ router.post('/reviews/:reviewId/reply', PortalController.replyToReview);
 // 11. Revenue & Occupancy Analytics
 router.get('/analytics/revenue', PortalController.getRevenueAnalytics);
 router.get('/analytics/occupancy', PortalController.getOccupancyAnalytics);
+
+// 12. Knowledge Base & AI RAG Ingestion (Phase 8)
+router.post('/knowledge/upload', knowledgeUpload.single('file'), PortalKnowledgeController.uploadDocument);
+router.get('/knowledge/documents', PortalKnowledgeController.getDocuments);
+router.get('/knowledge/documents/:id/chunks', PortalKnowledgeController.getDocumentChunks);
+router.delete('/knowledge/documents/:id', PortalKnowledgeController.deleteDocument);
+router.post('/knowledge/test-query', PortalKnowledgeController.testQuery);
 
 export const portalRoutes = router;

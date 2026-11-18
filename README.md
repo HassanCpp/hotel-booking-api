@@ -1,17 +1,18 @@
-# Hotel Booking API — Multi-Tenant Hospitality & Marketplace Engine
+# Hotel Booking API — Multi-Tenant Hospitality, Marketplace & Agentic RAG Engine
 
 > **Repository:** [hotel-booking-api](https://github.com/abanchaudry/hotel-booking-api)  
-> **Status:** Production-Ready • 85/85 Automated QA Tests Passing (100%)  
-> **Core Stack:** Node.js • Express • TypeScript • MongoDB (Mongoose) • Multer • JWT • Zod • Bcrypt
+> **Status:** Production-Ready • Automated QA & RAG Stress Tests Passing (100%)  
+> **Core Stack:** Node.js • Express • TypeScript • MongoDB (Mongoose) • Pinecone Vector DB • OpenAI API (`gpt-4o`, `gpt-4o-mini`) • Multer • JWT • Zod • Bcrypt
 
 ---
 
 ## 📖 Overview
 
-The **Hotel Booking API** is an enterprise-grade hospitality and marketplace engine designed for boutique hotel groups, multi-property operators, and guest commerce. It combines:
-1. **Multi-Tenant Hotel Operations:** Tenant isolation, PMS inventory controls, 14-day tape chart availability matrix, dynamic rate plans, promo codes, front-desk reservations lifecycle, and verified review moderation.
-2. **Super Admin Platform Console:** Global platform analytics, hotel onboarding wizard, tenant credential administration, audit logging, and marketplace curation.
-3. **Public Marketplace & Guest Commerce:** Geo-targeted home feeds, Airbnb-grade search & filtering, real-time rate quotation, idempotent booking pipeline, digital stay vouchers, and synchronized wishlists.
+The **Hotel Booking API** is an enterprise-grade hospitality, marketplace, and agentic AI engine designed for boutique hotel groups, multi-property operators, and guest commerce. It integrates:
+1. **Multi-Tenant Hotel Operations:** Tenant isolation, PMS inventory controls, 14-day tape chart availability matrix, dynamic rate plans, promo codes, front-desk reservations lifecycle, verified review moderation, and hotel knowledge base management.
+2. **Super Admin Platform Console:** Global platform analytics, hotel onboarding wizard, tenant credential administration, audit logging, marketplace destination curation, Pinecone vector index health governance, and real-time client chat surveillance.
+3. **Public Marketplace & Guest Commerce:** Geo-targeted home feeds, Airbnb-grade search & filtering, real-time rate quotation, idempotent booking pipeline, digital stay vouchers, synchronized wishlists, and a verified AI Concierge.
+4. **Agentic 3-Tier RAG Pipeline:** Fully grounded AI guest concierge powered by OpenAI and Pinecone, featuring hierarchical chunking, hybrid retrieval (dense vectors + lexical full-text search with entity-aware RRF), multi-signal evidence gating, and strict anti-hallucination citation suppression.
 
 ---
 
@@ -25,6 +26,66 @@ The **Hotel Booking API** is an enterprise-grade hospitality and marketplace eng
 * **Role-Based Access Control:** Strict role segregation for `SUPER_ADMIN`, `HOTEL_ADMIN`, `HOTEL_STAFF`, and `GUEST`.
 * **Idempotent Reservations Engine:** Front-ends submit a UUID idempotency key; duplicate submissions safely return existing booking without double charges or inventory overbooking.
 * **Audit Trail Engine (`ActivityLog`):** Non-blocking, fail-safe logging of all platform and tenant mutations.
+* **Single Authoritative Knowledge Architecture:** Unified, grounded knowledge base eliminating competing truth datasets; hotel admins control property policies, while Super Admin governs global master documents and platform-wide vector health.
+
+---
+
+## 🤖 Agentic 3-Tier RAG Architecture
+
+The platform features an advanced Retrieval-Augmented Generation (RAG) pipeline engineered for verified, zero-hallucination guest interactions:
+
+```
+Guest Query ──► [Preflight Router (gpt-4o-mini)]
+                       │
+       ┌───────────────┼───────────────┐
+       ▼               ▼               ▼
+  SMALL_TALK     OUT_OF_SCOPE    PROPERTY_INQUIRY
+  (Instant)      (Deflection)          │
+                                       ▼
+                         [Conversational Coreference &
+                             Query Entity Expansion]
+                                       │
+                      ┌────────────────┴────────────────┐
+                      ▼                                 ▼
+             [Pinecone Vector Search]        [MongoDB Lexical FTS]
+             (Dense Embeddings / Schema)     (Full-Text Exact Search)
+                      └────────────────┬────────────────┘
+                                       ▼
+                       [Entity-Aware RRF Fusion (k=50)]
+                       (+0.25 Exact Match Bonus for Codes,
+                             Dates, Prices & Numbers)
+                                       │
+                                       ▼
+                       [Parent Context Hydration]
+                       (Small ~150t ➔ Medium ~400t ➔ Large ~1000t)
+                                       │
+                                       ▼
+                       [Multi-Signal Evidence Gate]
+                       (Signal 1: Exact Match | Signal 2: Hybrid | Signal 3: RRF)
+                                       │
+                       ┌───────────────┴───────────────┐
+                       ▼ (Pass)                        ▼ (Fail)
+               [Pass 1: gpt-4o]                [Pass 2 Retry with
+               (Confidence: HIGH)               Expanded TopK=12]
+                       │                               │
+                       └───────────────┬───────────────┘
+                                       ▼
+                      [Concierge Anti-Hallucination &
+                        Citation Suppression Engine]
+                                       │
+                                       ▼
+                      [MongoDB ChatSession Persistence]
+                      (IP, User Agent, Route, Confidence,
+                           Latency & Citations Audit)
+```
+
+### Pipeline Subsystems:
+1. **Content Cleaner (`content-cleaner.service.ts`):** Normalizes whitespace and strips PDF page headers, recurring footer boilerplate, and legal disclaimers.
+2. **3-Tier Tree Chunker (`tree-chunker.service.ts`):** Deconstructs documents hierarchically into **Large (~1000 tokens)** structural chapters, **Medium (~400 tokens)** section rules, and **Small (~150 tokens)** vectorized policy facts with parent/grandparent linkage.
+3. **Hybrid Retriever (`hybrid-retriever.service.ts`):** Combines Pinecone vector similarity with MongoDB `$text` lexical search via Reciprocal Rank Fusion ($k=50$, Lexical 1.10x weight, Vector 1.00x weight) with exact match boosts for dates, prices, percentages, and alphanumeric codes.
+4. **Parent Context Hydration:** Small chunks retrieved by Pinecone are automatically hydrated with their parent Medium or Large context from MongoDB before feeding the LLM, eliminating chunk truncation.
+5. **Evidence Gate (`evidence-gate.service.ts`):** Multi-signal confidence gating with automatic Pass 2 retry on borderline retrieval scores.
+6. **Luxury Concierge Generator (`rag-generator.service.ts`):** Generates warm, first-person hospitality responses with strict anti-meta language bans, flexible refusal detection, and verified citation suppression (zero citations attached on fallback/refusal).
 
 ---
 
@@ -38,12 +99,13 @@ The **Hotel Booking API** is an enterprise-grade hospitality and marketplace eng
 | **`Property`** | Physical hotel | `hotelAccountId`, `name`, `slug`, `propertyType`, `status`, `address`, `coverImage`, `gallery`, `amenities`, `averageRating`, `reviewCount`, `isFeaturedOnHome`, `featuredPriority` |
 | **`RoomType`** | Sellable inventory | `propertyId`, `hotelAccountId`, `name`, `code`, `category`, `viewType`, `outdoorSpace`, `maxOccupancy`, `bedding`, `bathroom`, `roomSizeSqm`, `totalUnits`, `basePricePerNight`, `pricing`, `mealPlan` |
 | **`Availability`** | Tape chart calendar | `propertyId`, `roomTypeId`, `date`, `totalUnits`, `bookedUnits`, `blockedUnits`, `availableUnits`, `stopSell`, `closedToArrival`, `closedToDeparture` |
-| **`RatePlan`** | Dynamic pricing | `propertyId`, `roomTypeId`, `name`, `type` (`STANDARD` \| `WEEKEND` \| `EARLY_BIRD` \| `LAST_MINUTE` \| `SEASONAL`), `adjustmentType` (`PERCENTAGE_DISCOUNT` \| `PERCENTAGE_SURGE` \| `FIXED_DISCOUNT`), `validFrom`, `validTo`, `daysOfWeek`, `minNights`, `isActive` |
-| **`PromoCode`** | Discount codes | `hotelAccountId`, `propertyId`, `code`, `discountType` (`PERCENTAGE` \| `FIXED_AMOUNT`), `discountValue`, `validFrom`, `validTo`, `minSpend`, `usageLimit`, `usedCount`, `isActive` |
-| **`Booking`** | Reservations | `bookingReference` (`BK-HOTEL-YYMM-XXXX`), `propertyId`, `hotelAccountId`, `roomTypeId`, `guest`, `checkIn`, `checkOut`, `nights`, `rooms`, `pricing`, `status` (`PENDING` \| `CONFIRMED` \| `CHECKED_IN` \| `CHECKED_OUT` \| `CANCELLED`), `paymentStatus`, `source`, `idempotencyKey` |
-| **`Review`** | Verified feedback | `propertyId`, `bookingId`, `guestId`, `ratings` (6 categories: cleanliness, accuracy, checkIn, communication, location, value), `overallRating`, `title`, `comment`, `hotelReply`, `status` (`PUBLISHED` \| `HIDDEN`) |
-| **`FeaturedDestination`** | Geo discovery | `city`, `country`, `countryCode`, `subtitle`, `coverImage`, `displayOrder`, `targetCountries`, `isActive`, `isPopular` |
-| **`Policy`** | Operating rules | `propertyId`, `cancellationPolicy`, `cancellationDeadlineHours`, `petPolicy`, `smokingPolicy`, `childPolicy` |
+| **`RatePlan`** | Dynamic pricing | `propertyId`, `roomTypeId`, `name`, `type`, `adjustmentType`, `validFrom`, `validTo`, `daysOfWeek`, `minNights`, `isActive` |
+| **`PromoCode`** | Discount codes | `hotelAccountId`, `propertyId`, `code`, `discountType`, `discountValue`, `validFrom`, `validTo`, `minSpend`, `usageLimit`, `usedCount`, `isActive` |
+| **`Booking`** | Reservations | `bookingReference`, `propertyId`, `hotelAccountId`, `roomTypeId`, `guest`, `checkIn`, `checkOut`, `nights`, `rooms`, `pricing`, `status`, `paymentStatus`, `source`, `idempotencyKey` |
+| **`Review`** | Verified feedback | `propertyId`, `bookingId`, `guestId`, `ratings` (6 categories), `overallRating`, `title`, `comment`, `hotelReply`, `status` |
+| **`KnowledgeDocument`**| Ingested policy files | `hotelAccountId`, `propertyId`, `title`, `filename`, `fileType`, `fileSize`, `status` (`PROCESSING`, `INDEXED`, `FAILED`), `stats` (`totalTokens`, `vectorCount`, chunk counts), `uploadedBy` |
+| **`KnowledgeChunk`** | 3-Tier chunk store | `documentId`, `hotelAccountId`, `propertyId`, `tier` (`LARGE`, `MEDIUM`, `SMALL`), `chunkIndex`, `parentId`, `grandParentId`, `title`, `text`, `tokenCount`, `pineconeVectorId` |
+| **`ChatSession`** | Guest chat surveillance | `sessionId`, `guestId`, `guestEmail`, `guestName`, `propertyId`, `hotelAccountId`, `ipAddress`, `userAgent`, `status` (`ACTIVE`, `RESOLVED`, `FLAGGED`), `flagReason`, `messages` (with route, confidence, citations, latency), `messageCount`, `lastActivityAt` |
 | **`ActivityLog`** | Audit trail | `tenantId`, `actorId`, `actorRole`, `action`, `targetType`, `targetId`, `metadata`, `createdAt` |
 
 ---
@@ -73,7 +135,17 @@ The **Hotel Booking API** is an enterprise-grade hospitality and marketplace eng
 * `DELETE /destinations/:id` — Remove featured destination.
 * `PATCH  /properties/:id/feature` — Spotlight property on marketplace home feed.
 
-### 3. Hotel Operations Portal (`/api/v1/portal`) — Guarded: `HOTEL_ADMIN`, `HOTEL_STAFF`, `tenantGuard`
+### 3. Super Admin AI Governance & Surveillance (`/api/v1/admin/knowledge`) — Guarded: `SUPER_ADMIN`
+* `POST   /global` — Ingest global platform master policy document (`.txt` or `.pdf`).
+* `GET    /documents` — Cross-tenant document audit table with pagination and status filters.
+* `GET    /health` — Pinecone vector index health metrics, connection state, dimensions, and MongoDB record counts.
+* `DELETE /documents/:id` — Platform-wide document deletion and Pinecone vector purge.
+* `GET    /chat-sessions` — Real-time surveillance feed of guest chat sessions with client IP, user agent, turns, and status.
+* `GET    /chat-sessions/:id` — Complete session audit transcript with question routes, latency, confidence, and verified citations.
+* `PATCH  /chat-sessions/:id/status` — Update session surveillance classification (`ACTIVE`, `RESOLVED`, `FLAGGED`) and flag reason.
+* `DELETE /chat-sessions/:id` — Delete guest chat surveillance session.
+
+### 4. Hotel Operations Portal (`/api/v1/portal`) — Guarded: `HOTEL_ADMIN`, `HOTEL_STAFF`, `tenantGuard`
 * `GET    /amenities` — Global hotel amenities catalog.
 * `POST   /upload` — Upload property and room imagery (max 5MB).
 * `GET    /hotel/me` — Current hotel tenant metadata and overview metrics.
@@ -113,70 +185,70 @@ The **Hotel Booking API** is an enterprise-grade hospitality and marketplace eng
 * `GET    /reviews` — Property reviews with rating distributions.
 * `POST   /reviews/:reviewId/reply` — Submit public management reply to verified review.
 
-### 4. Public Marketplace (`/api/v1/marketplace`) — Public Access
+### 5. Hotel AI Knowledge Base (`/api/v1/portal/knowledge`) — Guarded: `HOTEL_ADMIN`, `tenantGuard`
+* `POST   /upload` — Ingest property or hotel-wide policy document (`.txt` or searchable `.pdf`). Runs 3-tier chunking and Pinecone vector upsert.
+* `GET    /documents` — List uploaded knowledge documents with chunk and token counts.
+* `GET    /documents/:id/chunks` — Inspect hierarchical 3-tier chunks (Large, Medium, Small) with parent IDs and Pinecone vector mappings.
+* `DELETE /documents/:id` — Delete document, purge MongoDB chunks, and delete Pinecone vectors.
+* `POST   /test-query` — Interactive simulator playground query to test RAG retrieval and confidence before publishing.
+
+### 6. Public Marketplace (`/api/v1/marketplace`) — Public Access
 * `GET  /home-feed` — Geo-resolved destination cards, spotlight hotel banner, and popular stays.
 * `GET  /cities` — Indexed cities with live property counts for search autocomplete.
-* `GET  /properties` — Search catalog with multi-factor filters (city, dates, guests, price, rating, amenities). Excludes hotels with zero available units on requested dates.
+* `GET  /properties` — Search catalog with multi-factor filters (city, dates, guests, price, rating, amenities).
 * `GET  /properties/:slug` — Full property detail, 5-photo bento box, amenities, and policies.
 * `GET  /properties/:slug/rooms` — Sellable room types with live rates for requested dates and occupancy.
-* `GET  /properties/:slug/availability` — Real-time availability calendar endpoint returning booked date ranges, unavailable nights, and unit allocations.
+* `GET  /properties/:slug/availability` — Real-time availability calendar endpoint returning booked date ranges and unit allocations.
 * `GET  /properties/:slug/reviews` — Verified guest reviews with Airbnb 6-category ratings summary.
 * `POST /promo/validate` — Validate promo code against dates, property, and cart value.
 * `POST /check-rates` — Real-time rate calculation engine with taxes, fees, and add-ons.
-* `POST /bookings` — Create reservation with idempotency key (`201 CREATED`). Supports optional JWT auth to link booking to guest profile.
+* `POST /bookings` — Create reservation with idempotency key (`201 CREATED`).
+* `POST /properties/:propertyId/ask` — Public AI concierge endpoint. Answers guest inquiries grounded in property policies, returns verified citations, and persists chat session with IP surveillance tracking.
 
-### 5. Guest Accounts & Wishlist (`/api/v1/guest`) — Guarded: `GUEST`
+### 7. Guest Accounts & Wishlist (`/api/v1/guest`) — Guarded: `GUEST`
 * `POST   /register` — Public guest account registration.
 * `GET    /bookings` — Guest reservation history.
 * `GET    /bookings/:id` — Guest booking detail and printable digital voucher.
-* `POST   /bookings/:id/cancel` — Policy-compliant guest cancellation with automatic refund calculation and voucher restoral.
+* `POST   /bookings/:id/cancel` — Policy-compliant guest cancellation with refund calculation and voucher restoral.
 * `POST   /bookings/:bookingId/review` — Submit 6-category verified review after checkout.
-* `GET    /saved-properties` — List guest wishlist favorites (null-safe against unpublished hotels).
+* `GET    /saved-properties` — List guest wishlist favorites.
 * `POST   /saved-properties/:propertyId` — Add property to wishlist.
 * `DELETE /saved-properties/:propertyId` — Remove property from wishlist.
 
 ---
 
-## 🛡 Real-Time Inventory & Booking Lifecycle Engine
+## 🧪 Comprehensive Automated QA Suites
 
-1. **Atomic Inventory Reservation with Rollback Protection:**
-   * Atomically locks units night-by-night (`$inc: { bookedUnits: rooms }`) subject to `totalUnits`.
-   * If any night fails in a multi-night reservation, a compensating rollback loop automatically reverses previously incremented nights, preventing ghost locks on standalone MongoDB instances.
-2. **Availability Calendar Endpoint (`GET /properties/:slug/availability`):**
-   * Cross-references `Availability` records and active `Booking` entries (`PENDING`, `CONFIRMED`, `CHECKED_IN`).
-   * Feeds the 2-month side-by-side interactive calendar widget with booked date spans and unavailable dates.
-3. **Automated Expiration Sweeper (`bookingExpiry.ts`):**
-   * Automatically sweeps and cancels abandoned `PENDING` bookings older than 24 hours (or past check-in), releasing held units back to the marketplace.
-4. **Multi-Tenant Tape Chart & Override Isolation:**
-   * Strict tenant boundary checks prevent hotel admins from viewing or overriding other hotels' availability matrices or rate plans.
-5. **Early Check-Out Unused Nights Release:**
-   * Checking out before the scheduled departure date frees remaining unused nights (`[today, scheduledCheckOut)`), immediately returning inventory to the market.
-6. **Strict Pricing & Occupancy Guards:**
-   * Rejects bookings where guest count exceeds room capacity (`MAX_OCCUPANCY_EXCEEDED`).
-   * Enforces date order (`checkOut > checkIn`) and minimum stays.
-   * Enforces strict promo code validation (rejects invalid/expired codes instead of silently dropping discounts).
-
----
-
-## 🧪 Comprehensive Automated QA Suite
-
-The backend includes an exhaustive, automated end-to-end QA test suite covering the entire multi-tenant system lifecycle:
-
+### 1. Full-System Hospitality Lifecycle QA (`npm run test:qa`)
 ```bash
-# Run the complete 85-step QA regression suite:
 npm run test:qa
 ```
+* **Coverage:** 85/85 automated assertions covering tenant isolation, PMS availability tape charts, dynamic rate plans, promo codes, idempotency, review moderation, and full booking lifecycle.
 
-### What `npm run test:qa` Verifies:
-1. **Section 1: Authentication & RBAC:** Super Admin, Hotel Admin, and Guest token flows; invalid credential rejection; cross-role permission guards.
-2. **Section 2: Super Admin Platform Oversight:** KPI statistics, hotel onboarding, password resets, admin email updates, destination curation CRUD, and homepage property spotlighting.
-3. **Section 3: Hotel Operations Portal:** Scoped hotel profile, amenities catalog, room creation, availability tape chart calculation, rate plans, promo codes, today's operations board, and reviews ledger.
-4. **Section 4: Marketplace Discovery & Search:** Geo-targeted home feed resolution (default `PK` vs timezone `AE`), city auto-suggest, multi-filter search, property details, room availability, Airbnb 6-category reviews, promo validation, and live rate quotes.
-5. **Section 5: End-to-End Booking & Review Lifecycle:** Idempotent booking creation, status progression (`PENDING` ➔ `CONFIRMED` ➔ `CHECKED_IN` ➔ `CHECKED_OUT`), verified guest review submission, management reply publication, and guest wishlist toggle lifecycle (`POST` / `GET` / `DELETE`).
-6. **Section 6: Error Handling & Security:** 404 handling on invalid slugs, 404 on expired promos, and Zod 400 validation on malformed payloads.
-7. **Section 7: Self-Cleaning Teardown:** Ephemeral test bookings, reviews, and test users are cleanly expunged, and unit availability is automatically restored.
+### 2. End-to-End RAG Pipeline & Multi-Tier Chunking QA (`npm run test:rag`)
+```bash
+npm run test:rag
+```
+* **Coverage:** Connects to live MongoDB and Pinecone; ingests house rules document; validates 3-tier chunk counts; tests fast-path small talk preflight; tests out-of-scope deflection; validates multi-topic grounded policy retrieval; verifies anti-hallucination citation suppression; executes clean document and vector teardown.
 
-**Result: 85 passed, 0 failed (100% passing)**
+### 3. Exhaustive RAG Stress Test (`npx tsx src/scripts/test-rag-stress.ts`)
+```bash
+npx tsx src/scripts/test-rag-stress.ts
+```
+* **Coverage:** 17 comprehensive test cases evaluating:
+  * **Dates & Seasons (4/4 Passed):** Annual maintenance closures, Ramadan calendar dates, Iftar times, and holiday voucher blackout dates.
+  * **Prices & Penalties (3/3 Passed):** Rollaway adult beds, complimentary infant cribs, sedan vs passenger van transfer rates, and security deposit amounts.
+  * **Alphanumeric Codes (3/3 Passed):** Wi-Fi SSID and passkey (`Heritage@Stay2026!`), summer promo code (`SUMMER2026`), and security lost-baggage reference (`SEC-REF-902`).
+  * **Conditional Constraints (2/2 Passed):** Early check-in arrival cost calculations at 9:30 AM, and flexible 36-hour cancellation penalty calculation (50%).
+  * **Multi-Turn Coreference (2/2 Passed):** Resolving pronouns and follow-up inquiries across conversational turns.
+  * **Anti-Hallucination Guardrails (3/3 Passed):** Grounded refusal for prohibited exotic pets (snakes), and citation-suppressed refusals for non-existent amenities (Tesla Level 3 Superchargers, Bitcoin payments).
+* **Result: 17/17 passed (100% success rate)**
+
+### 4. Super Admin Surveillance & Observability QA (`npx tsx src/scripts/test-api-surveillance.ts`)
+```bash
+npx tsx src/scripts/test-api-surveillance.ts
+```
+* **Coverage:** Authenticates Super Admin via JWT; verifies `GET /admin/knowledge/chat-sessions`; verifies `GET /admin/knowledge/chat-sessions/:id` transcript retrieval; verifies `PATCH` status updates (`FLAGGED`, `RESOLVED`, `ACTIVE`).
 
 ---
 
@@ -184,15 +256,12 @@ npm run test:qa
 
 ### 1. Prerequisites
 - **Node.js:** v18.0.0 or higher
-- **MongoDB:** A running MongoDB instance on `localhost:27017` or MongoDB Atlas
+- **MongoDB:** Running instance on `mongodb://localhost:27017/ai_hotel_agent` or MongoDB Atlas
+- **Pinecone Vector Database:** API key and index (`hotel-knowledge`)
+- **OpenAI API:** API key with access to `gpt-4o` and `gpt-4o-mini`
 
-### 2. Environment Setup
-```bash
-# Copy environment configuration:
-cp .env.example .env
-```
-
-Ensure `.env` contains:
+### 2. Environment Configuration
+Create a `.env` file in `backend/`:
 ```env
 PORT=5000
 NODE_ENV=development
@@ -202,70 +271,28 @@ JWT_ACCESS_SECRET=super_secret_access_jwt_key_2026_hotel_agent
 JWT_REFRESH_SECRET=super_secret_refresh_jwt_key_2026_hotel_agent
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
+OPENAI_API_KEY=your_openai_api_key_here
+PINECONE_API_KEY=your_pinecone_api_key_here
+PINECONE_INDEX_NAME=hotel-knowledge
 ```
 
 ### 3. Database Seeding
-
-#### Option A: Base Demonstration Seed (`npm run seed`)
-Populate the database with core hotels, published properties, tape chart availability, rate plans, promo codes, curated destinations, sample bookings, verified reviews, and a pre-configured guest wishlist:
-
 ```bash
+# Seed base hotels, users, and properties:
 npm run seed
-```
 
-#### Option B: Worldwide Expanded Catalog (`npm run seed:expanded`)
-Flood the system with 15+ premier luxury properties across Pakistan (Hunza, Skardu, Islamabad, Murree, Gwadar, Lahore, Peshawar) and top global destinations (Dubai, Al Ula, Riyadh, Istanbul, London, Paris, New York, Bali, Tokyo). Each property includes verified high-res photography, custom room categories, house policies, 60-day availability tape charts, and isolated admin credentials:
-
-```bash
+# Or flood with 15+ premier worldwide luxury properties:
 npm run seed:expanded
 ```
 
-#### Pre-Configured Seeded Accounts:
-
-##### Platform & Guest Accounts
-| Role | Email | Password | Scope & Key Features |
-| :--- | :--- | :--- | :--- |
-| **Super Admin** | `superadmin@hotelagent.com` | `Admin123!` | Hotel onboarding, audit logs, marketplace curation |
-| **Demo Guest** | `guest@hotelai.com` | `Guest123!` | Wishlist pre-seeded, bookings history, review author |
-| **Test Guest** | `bilal@example.com` | `Bilal123!` | Active reservation holder on Milli Dorms |
-| **Test Guest** | `ayesha@guest.com` | `Ayesha123!` | Verified review author on The Grand Heritage |
-
-##### Pakistan Hotel Admin Accounts
-| Property Name | Property Type | City, Country | Admin Email | Password |
-| :--- | :--- | :--- | :--- | :--- |
-| **The Grand Heritage Mall Road** | `BOUTIQUE` | Lahore, Pakistan | `admin@heritagehotel.com` | `Heritage123!` |
-| **Serene Oasis Beach & Spa** | `RESORT` | Karachi, Pakistan | `admin@sereneresort.com` | `Oasis123!` |
-| **Milli Dorms** | `APARTMENT` | Lahore, Pakistan | `hamza@millidorms.com` | `Hamza123!` |
-| **Hunza Serai Mountain Glamping** | `GLAMPING` | Hunza, Pakistan | `admin@hunzaserai.com` | `Hunza123!` |
-| **The Margalla Ridge Boutique & Spa** | `BOUTIQUE` | Islamabad, Pakistan | `admin@margallaridge.com` | `Margalla123!` |
-| **Shangrila Pines Heritage Villa** | `VILLA` | Murree, Pakistan | `admin@shangrilapines.com` | `Pines123!` |
-| **Skardu Celestial Stargazing Resort** | `RESORT` | Skardu, Pakistan | `admin@skarduresort.com` | `Skardu123!` |
-| **Gwadar Pearl Oceanfront Resort** | `RESORT` | Gwadar, Pakistan | `admin@gwadarpearl.com` | `Gwadar123!` |
-| **Gulberg Executive Luxury Apartments** | `APARTMENT` | Lahore, Pakistan | `admin@gulbergsuites.com` | `Gulberg123!` |
-| **Qissa Khwani Heritage Haveli** | `BOUTIQUE` | Peshawar, Pakistan | `admin@peshawarhaveli.com` | `Peshawar123!` |
-
-##### Global & International Hotel Admin Accounts
-| Property Name | Property Type | City, Country | Admin Email | Password |
-| :--- | :--- | :--- | :--- | :--- |
-| **Burj Vista Sky Penthouse** | `APARTMENT` | Dubai, United Arab Emirates | `admin@burjvista.ae` | `Dubai123!` |
-| **Al Ula Desert Rose Canyon Oasis** | `RESORT` | Al Ula, Saudi Arabia | `admin@alulaoasis.sa` | `Alula123!` |
-| **Bosphorus Waterfront Ottoman Palace** | `HOTEL` | Istanbul, Turkey | `admin@bosphoruspalace.com` | `Istanbul123!` |
-| **Mayfair Royal Georgian Residence** | `BOUTIQUE` | London, United Kingdom | `admin@mayfairresidence.co.uk` | `London123!` |
-| **Le Marais Haussmann Luxury Loft** | `APARTMENT` | Paris, France | `admin@lemaraisloft.fr` | `Paris123!` |
-| **Tribeca Designer Penthouse** | `APARTMENT` | New York, United States | `admin@tribecapenthouse.com` | `Newyork123!` |
-| **Ubud Sacred Valley Rainforest Villa** | `VILLA` | Bali, Indonesia | `admin@ubudrainforest.com` | `Bali123!` |
-| **Shinjuku Zen Modern Ryokan & Onsen** | `BOUTIQUE` | Tokyo, Japan | `admin@zenryokan.jp` | `Tokyo123!` |
-
-### 4. Running the Server
+### 4. Running Development & Production Server
 ```bash
-# Development mode with hot-reloading:
+# Hot-reloading development server:
 npm run dev
 
 # Production build and run:
 npm run build
 npm start
 ```
-
-* API Endpoint: **`http://localhost:5000`**
+* API Server: **`http://localhost:5000`**
 * Health Check: **`http://localhost:5000/api/v1/health`**
-* Static Uploads: **`http://localhost:5000/uploads/`**

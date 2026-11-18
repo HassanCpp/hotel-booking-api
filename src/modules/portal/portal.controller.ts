@@ -457,14 +457,14 @@ export class PortalController {
   // ─── PROPERTY CRUD (MILESTONE A3) ───────────────────────────────────
   static async getMyProperties(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      if (!req.hotelAccountId) {
+      const filter: Record<string, any> = { status: { $ne: 'ARCHIVED' } };
+      if (req.hotelAccountId) {
+        filter.hotelAccountId = req.hotelAccountId;
+      } else if (req.user?.role !== 'SUPER_ADMIN') {
         throw new AppError('No hotel account linked', 404, 'HOTEL_NOT_FOUND');
       }
 
-      const properties = await Property.find({
-        hotelAccountId: req.hotelAccountId,
-        status: { $ne: 'ARCHIVED' },
-      })
+      const properties = await Property.find(filter)
         .sort({ createdAt: -1 })
         .lean();
 

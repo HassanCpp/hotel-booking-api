@@ -13,6 +13,10 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   GOOGLE_CLIENT_ID: z.string().optional().default(''),
+  OPENAI_API_KEY: z.string().optional().default(''),
+  PINECONE_API_KEY: z.string().optional().default(''),
+  PINECONE_INDEX_NAME: z.string().optional().default('hotel-knowledge'),
+  PINECONE_DIMENSION: z.coerce.number().default(1024),
 });
 
 const parsed = envSchema.safeParse(process.env);
