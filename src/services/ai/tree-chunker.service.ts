@@ -113,7 +113,7 @@ export class TreeChunker {
   }
 
   /**
-   * Splits entire text into Large Sections (~800 - 1200 tokens)
+   * Splits entire text into Large Sections (~600 - 1000 tokens)
    */
   private static splitIntoLargeSections(
     text: string,
@@ -134,7 +134,7 @@ export class TreeChunker {
 
       // Check if this paragraph is a major header
       const isHeader = this.isHeaderLine(p);
-      if (isHeader && currentParagraphs.length > 0 && currentTokens >= 400) {
+      if (isHeader && currentParagraphs.length > 0 && currentTokens >= 300) {
         // Flush current large section
         sections.push({
           title: sectionTitle,
@@ -148,8 +148,8 @@ export class TreeChunker {
       currentParagraphs.push(p);
       currentTokens += pTokens;
 
-      // If token count exceeds ~1000 tokens, split
-      if (currentTokens >= 1000) {
+      // If token count exceeds ~800 tokens, split
+      if (currentTokens >= 800) {
         sections.push({
           title: sectionTitle,
           text: currentParagraphs.join('\n\n'),
@@ -170,7 +170,7 @@ export class TreeChunker {
   }
 
   /**
-   * Splits a Large Section into Medium Sections (~350 - 500 tokens)
+   * Splits a Large Section into Medium Sections (~250 - 450 tokens)
    */
   private static splitIntoMediumSections(
     largeText: string,
@@ -189,8 +189,8 @@ export class TreeChunker {
 
       const pTokens = this.estimateTokens(trimmed);
 
-      // Check for sub-header
-      if (this.isHeaderLine(trimmed) && currentParagraphs.length > 0 && currentTokens >= 200) {
+      // Any header line defines a new Medium topic section
+      if (this.isHeaderLine(trimmed) && currentParagraphs.length > 0) {
         mediumSections.push({
           title: medTitle,
           text: currentParagraphs.join('\n\n'),
@@ -224,15 +224,16 @@ export class TreeChunker {
   }
 
   /**
-   * Splits a Medium Section into Small Chunks (~100 - 200 tokens)
+   * Splits a Medium Section into Small Chunks (~100 - 180 tokens)
+   * Preserves whole bullet points and numbered items intact so facts and fees are never bifurcated.
    */
   private static splitIntoSmallSections(
     mediumText: string,
     parentTitle: string
   ): { title: string; text: string }[] {
-    // Split on bullet points, numbered items, or sentence boundaries
+    // Split cleanly on newlines followed by bullets, numbers, or section headers
     const rawUnits = mediumText
-      .split(/(?:\n[-*•]\s+|\n\d+\.\s+|(?<=[.!?])\s+(?=[A-Z0-9]))/)
+      .split(/\n+(?=[-•*]|\d+\.|\b[A-Z][a-zA-Z\s]+:)/)
       .map((u) => u.trim())
       .filter((u) => u.length > 0);
 
@@ -243,11 +244,11 @@ export class TreeChunker {
     for (const unit of rawUnits) {
       const unitTokens = this.estimateTokens(unit);
 
-      // If adding this unit exceeds 150 tokens, flush current block
-      if (currentTokens + unitTokens > 180 && currentUnits.length > 0) {
+      // If adding this unit exceeds 160 tokens, flush current block
+      if (currentTokens + unitTokens > 160 && currentUnits.length > 0) {
         smallSections.push({
           title: parentTitle,
-          text: currentUnits.join(' '),
+          text: currentUnits.join('\n'),
         });
         currentUnits = [];
         currentTokens = 0;
@@ -260,7 +261,7 @@ export class TreeChunker {
     if (currentUnits.length > 0) {
       smallSections.push({
         title: parentTitle,
-        text: currentUnits.join(' '),
+        text: currentUnits.join('\n'),
       });
     }
 

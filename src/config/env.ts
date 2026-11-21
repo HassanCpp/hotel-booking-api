@@ -17,6 +17,9 @@ const envSchema = z.object({
   PINECONE_API_KEY: z.string().optional().default(''),
   PINECONE_INDEX_NAME: z.string().optional().default('hotel-knowledge'),
   PINECONE_DIMENSION: z.coerce.number().default(1024),
+  LANGCHAIN_TRACING_V2: z.string().optional().default('false'),
+  LANGCHAIN_API_KEY: z.string().optional().default(''),
+  LANGCHAIN_PROJECT: z.string().optional().default('hotel-booking-agent'),
 });
 
 const parsed = envSchema.safeParse(process.env);

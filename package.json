@@ -16,13 +16,17 @@
     "test:marketplace": "tsx src/scripts/test-marketplace-backend.ts",
     "test:qa": "tsx src/scripts/test-full-system-qa.ts",
     "test:ai": "tsx src/scripts/test-ai-integrations.ts",
-    "test:rag": "tsx src/scripts/test-rag-pipeline.ts"
+    "test:rag": "tsx src/scripts/test-rag-pipeline.ts",
+    "test:agent": "tsx src/scripts/test-langgraph-booking.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@langchain/core": "^1.5.0",
+    "@langchain/langgraph": "^1.7.5",
+    "@langchain/openai": "^1.8.5",
     "@pinecone-database/pinecone": "^9.1.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
@@ -30,6 +34,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "langsmith": "^0.13.1",
     "mongoose": "^9.10.0",
     "multer": "^2.4.0",
     "nodemailer": "^10.0.13",

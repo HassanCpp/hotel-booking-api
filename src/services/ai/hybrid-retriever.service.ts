@@ -197,8 +197,10 @@ export class HybridRetriever {
         cand.exactMatchFound = true;
       }
 
-      // Check for key terms in title
-      const titleMatches = queryTerms.filter((term) => titleLower.includes(term));
+      // Check for key topical terms in title (exclude generic stop-words and filler)
+      const genericTerms = new Set(['hotel', 'resort', 'stay', 'guide', 'manual', 'compendium', 'collection', 'what', 'which', 'tell', 'about', 'policy', 'policies']);
+      const topicalTerms = queryTerms.filter((term) => !genericTerms.has(term));
+      const titleMatches = topicalTerms.filter((term) => titleLower.includes(term));
       if (titleMatches.length > 0) {
         cand.score += 0.15;
         cand.exactMatchFound = true;

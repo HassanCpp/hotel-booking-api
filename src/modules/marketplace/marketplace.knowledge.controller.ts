@@ -131,4 +131,59 @@ export class MarketplaceKnowledgeController {
       next(error);
     }
   }
+
+  /**
+   * Autonomous LangGraph AI Booking Concierge:
+   * Multi-turn conversational booking assistant executing availability checks,
+   * rate quotes, atomic reservations, status lookups, and cancellations.
+   */
+  public static async bookWithAgent(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const propertyId = req.params.propertyId || req.body.propertyId;
+      const { message, query, history, sessionId: clientSessionId } = req.body;
+      const userMessage = message || query;
+
+      if (!userMessage || typeof userMessage !== 'string' || !userMessage.trim()) {
+        throw new AppError('Message is required for AI booking agent', 400, 'MESSAGE_REQUIRED');
+      }
+
+      let resolvedPropertyId: string | undefined = undefined;
+      if (propertyId && typeof propertyId === 'string' && propertyId.trim()) {
+        const { resolveProperty } = await import('../../services/ai/booking-tools');
+        const prop = await resolveProperty(propertyId);
+        if (prop) {
+          resolvedPropertyId = prop._id.toString();
+        }
+      }
+
+      const clientIp =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.ip ||
+        req.socket.remoteAddress ||
+        '127.0.0.1';
+      const userAgent = req.headers['user-agent'] || 'Web Client';
+
+      const { BookingGraphService } = await import('../../services/ai/booking-graph.service');
+
+      const result = await BookingGraphService.processGuestMessage({
+        propertyId: resolvedPropertyId,
+        message: userMessage.trim(),
+        sessionId: clientSessionId,
+        history: Array.isArray(history) ? history : [],
+        clientIp,
+        userAgent,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

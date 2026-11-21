@@ -149,12 +149,12 @@ ${contextText || '(No specific knowledge documents found)'}`;
    */
   private static checkIfRefusal(answer: string): boolean {
     const refusalPatterns = [
-      /not (?:listed|mentioned|available|offered|accepted|stated|permitted)/i,
-      /do not (?:list|have|accept|offer|provide)/i,
-      /not have .* (?:listed|available|provided|mentioned)/i,
-      /do not have (?:information|details|record)/i,
-      /unable to (?:find|provide|confirm|locate)/i,
-      /(?:contact|contacting|confirm|confirming|inquire|inquiring|check|checking) with (?:our|the) front desk/i,
+      /not (?:listed|mentioned|stated|found|specified) in (?:our|the) (?:knowledge|records|compendium|manual|policies|system)/i,
+      /is not listed for (?:this|our|the) property/i,
+      /do not have (?:information|details|record|records) (?:regarding|about|on|for)/i,
+      /unable to (?:find|provide|confirm|locate) (?:information|details|specifics)/i,
+      /I apologize, but (?:the .* is not listed|we do not have|there is no record)/i,
+      /(?:please|feel free to) (?:inquire|check) (?:directly )?with (?:our|the) front desk (?:team )?to confirm/i,
     ];
     return refusalPatterns.some((pattern) => pattern.test(answer));
   }
