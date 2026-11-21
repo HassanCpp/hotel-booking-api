@@ -276,16 +276,31 @@ PINECONE_API_KEY=your_pinecone_api_key_here
 PINECONE_INDEX_NAME=hotel-knowledge
 ```
 
-### 3. Database Seeding
-```bash
-# Seed base hotels, users, and properties:
-npm run seed
+### 3. Database & Knowledge Seeding
+To populate the database and vector index with the exact same data, 20 published properties, and rich knowledge manuals:
 
-# Or flood with 15+ premier worldwide luxury properties:
-npm run seed:expanded
+```bash
+# One-command full turnkey setup (Seeds Users, 20 Properties, Rooms, Inventory, Curation & Knowledge):
+npm run seed:all
+
+# Or run individual seed steps:
+npm run seed              # Seed base users and admin accounts
+npm run seed:expanded     # Seed 20 domestic & international luxury properties
+npm run seed:knowledge    # Seed Super Admin global policies & all 20 property manuals into Mongo + Pinecone
 ```
 
-### 4. Running Development & Production Server
+### 4. Running Verification Test Suites
+Verify that data and retrieval are fully operational:
+
+```bash
+# Run 10-Case Retrieval & Grounding Quality Benchmark:
+npm run test:retrieval
+
+# Run 6-Case LangGraph Booking Agent Test Suite:
+npm run test:agent
+```
+
+### 5. Running Development & Production Server
 ```bash
 # Hot-reloading development server:
 npm run dev

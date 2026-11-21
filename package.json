@@ -9,6 +9,8 @@
     "start": "node dist/server.js",
     "seed": "tsx src/scripts/seed.ts",
     "seed:expanded": "tsx src/scripts/seed-expanded-properties.ts",
+    "seed:knowledge": "tsx src/scripts/seed-comprehensive-knowledge.ts",
+    "seed:all": "tsx src/scripts/seed-all.ts",
     "test:tenancy": "tsx src/scripts/test-tenancy.ts",
     "test:a2": "tsx src/scripts/test-a2-onboarding.ts",
     "test:a3-a4": "tsx src/scripts/test-a3-a4.ts",
@@ -17,6 +19,7 @@
     "test:qa": "tsx src/scripts/test-full-system-qa.ts",
     "test:ai": "tsx src/scripts/test-ai-integrations.ts",
     "test:rag": "tsx src/scripts/test-rag-pipeline.ts",
+    "test:retrieval": "tsx src/scripts/test-comprehensive-retrieval.ts",
     "test:agent": "tsx src/scripts/test-langgraph-booking.ts"
   },
   "keywords": [],
