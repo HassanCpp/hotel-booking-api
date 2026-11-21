@@ -20,7 +20,8 @@
     "test:ai": "tsx src/scripts/test-ai-integrations.ts",
     "test:rag": "tsx src/scripts/test-rag-pipeline.ts",
     "test:retrieval": "tsx src/scripts/test-comprehensive-retrieval.ts",
-    "test:agent": "tsx src/scripts/test-langgraph-booking.ts"
+    "test:agent": "tsx src/scripts/test-langgraph-booking.ts",
+    "test:smith": "tsx src/scripts/test-langsmith-trace.ts"
   },
   "keywords": [],
   "author": "",
