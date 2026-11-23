@@ -3,7 +3,11 @@ import { env } from './config/env';
 import { connectDB } from './config/database';
 
 async function bootstrap() {
-  await connectDB();
+  try {
+    await connectDB();
+  } catch {
+    process.exit(1);
+  }
 
   const server = app.listen(Number(env.PORT), () => {
     console.log(`🚀 AI Hotel Agent API running in ${env.NODE_ENV} mode on port ${env.PORT}`);
