@@ -28,7 +28,7 @@ async function main() {
   const existingDocs = await KnowledgeDocument.find({}).lean();
   console.log(`\n=== EXISTING KNOWLEDGE DOCUMENTS (${existingDocs.length}) ===`);
   for (const d of existingDocs) {
-    console.log(`- Doc: "${d.title}" | ID: ${d._id} | PropertyId: ${d.propertyId} | IsGlobal: ${d.isGlobalMaster} | Status: ${d.status}`);
+    console.log(`- Doc: "${d.title}" | ID: ${d._id} | PropertyId: ${d.propertyId} | IsGlobal: ${!d.propertyId} | Status: ${d.status}`);
   }
 
   await mongoose.disconnect();

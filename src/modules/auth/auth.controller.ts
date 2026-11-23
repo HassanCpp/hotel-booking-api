@@ -12,6 +12,13 @@ const loginSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+const getAuthCookieOptions = (maxAge?: number) => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: (process.env.NODE_ENV === 'production' ? 'none' : 'lax') as 'none' | 'lax',
+  ...(maxAge ? { maxAge } : {}),
+});
+
 export class AuthController {
   static async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -19,12 +26,7 @@ export class AuthController {
       const { user, accessToken, refreshToken } = await AuthService.login(email, password);
 
       // Set refresh token in HttpOnly secure cookie
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
+      res.cookie('refreshToken', refreshToken, getAuthCookieOptions(7 * 24 * 60 * 60 * 1000));
 
       res.status(200).json({
         success: true,
@@ -56,22 +58,14 @@ export class AuthController {
         },
       });
     } catch (error) {
-      res.clearCookie('refreshToken', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-      });
+      res.clearCookie('refreshToken', getAuthCookieOptions());
       next(error);
     }
   }
 
   static async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      res.clearCookie('refreshToken', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-      });
+      res.clearCookie('refreshToken', getAuthCookieOptions());
 
       res.status(200).json({
         success: true,
@@ -162,12 +156,7 @@ export class AuthController {
         { expiresIn: (env.JWT_REFRESH_EXPIRES_IN || '7d') as any }
       );
 
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('refreshToken', refreshToken, getAuthCookieOptions(7 * 24 * 60 * 60 * 1000));
 
       res.status(200).json({
         success: true,
