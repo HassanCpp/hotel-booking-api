@@ -1,5 +1,8 @@
 import { spawnSync } from 'child_process';
 import path from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 console.log('========================================================================');
 console.log('🏨 MASTER SEED PIPELINE: INITIALIZING FULL PLATFORM DATA & KNOWLEDGE');
