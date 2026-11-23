@@ -22,6 +22,7 @@ for (const step of scripts) {
     cwd: backendRoot,
     stdio: 'inherit',
     shell: true,
+    env: process.env,
   });
 
   if (result.status !== 0) {

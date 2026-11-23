@@ -1641,7 +1641,7 @@ const EXPANDED_DESTINATIONS = [
 ];
 
 async function seedExpanded() {
-  const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_hotel_agent';
+  const uri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/ai_hotel_agent';
   console.log(`🔌 Connecting to MongoDB: ${uri}...`);
   await mongoose.connect(uri);
 
