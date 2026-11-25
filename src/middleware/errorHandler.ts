@@ -71,7 +71,7 @@ export function errorHandler(
     success: false,
     error: {
       code: 'INTERNAL_SERVER_ERROR',
-      message: 'An unexpected server error occurred',
+      message: err.message || 'An unexpected server error occurred',
     },
   });
 }
